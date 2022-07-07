@@ -19,3 +19,9 @@ if __name__ == "__main__":
     parser = Parser(specs, [CopyReader(), FileReader()], filename=spec_file)
 
     res = parser.parse()
+
+    ts.prepare()
+    for actor in res:
+        ts.change(actor)
+
+    ts.cleanup()

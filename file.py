@@ -9,6 +9,9 @@ class File(Actor):
         self.name = name
         self.content = content
 
+    def execute(self, ts):
+        ts.create_file(self.name, self.content)
+
 
 class FileReader(Reader):
     """Hard reader using a heredoc-like marker to find the end of the match."""

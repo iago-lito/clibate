@@ -10,6 +10,11 @@ class Copy(Actor):
         self.sources = sources
         self.targets = targets
 
+    def execute(self, ts):
+        for o, d in zip(self.sources, self.targets):
+            ts.check_input_file(o)
+            ts.copy_from_input(o, d)
+
 
 class CopyReader(Reader):
     """Soft reader with a simple block of lines.
