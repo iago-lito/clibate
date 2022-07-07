@@ -4,6 +4,7 @@
 from exceptions import ParseError
 
 import ast
+import textwrap as tw
 
 
 class _EOI:
@@ -236,6 +237,33 @@ class Lexer(object):
             return longest
         return None
 
+    def read_split(self) -> str:
+        """Consume and return a raw (stripped) read until next whitespace.
+        >>> l = Lexer(" a  b ce f ")
+        >>> l.read_split(), l.n_consumed # Skips over whitespace before read.
+        ('a', 2)
+        >>> l.read_split(), l.n_consumed # Skips over whitespace after read.
+        ('b', 5)
+        >>> l.read_split(), l.n_consumed
+        ('ce', 8)
+        >>> l.read_split(), l.n_consumed # Finishes the input non-whitespace.
+        ('f', 10)
+        >>> l.read_split(), l.n_consumed # Only whitespace left.
+        ('', 11)
+        >>> l.read_split(), l.n_consumed # Nothing left.
+        ('', 11)
+        """
+        s = self.input.split(None, 1)
+        if len(s) == 2:
+            read, _ = s
+        elif len(s) == 1:
+            (read,) = s
+        else:
+            self.lstrip()
+            read = ""
+        assert self.find(read)
+        return read
+
     def read_python_string(self) -> str or None:
         r"""Find and read next python string or return None and don't consume anything.
         >>> l = Lexer(" a 'b' r'''pytho\n''' notstring")
@@ -260,11 +288,20 @@ class Lexer(object):
             return string
         return None
 
-    def read_until(self, stop=EOI, consume_stop=True) -> str or None:
+    def read_until(
+        self,
+        stop=EOI,
+        consume_stop=True,
+        strip=False,
+        expect_data=None,
+    ) -> str or None:
         """Return all raw input before the fixed stop pattern.
         None if 'stop' cannot be found.
         Request EOI to return all remaining input.
         In this case the returned value cannot be None.
+        strip: True to remove whitespace padding from the read
+               (note that it's still consumed).
+        expect_data: Names data expected to be not empty, or backtrack and error out.
         >>> l = Lexer(" raw read <marker> another read <mark>")
         >>> l.read_until('<marker>'), l.n_consumed
         (' raw read ', 18)
@@ -280,26 +317,50 @@ class Lexer(object):
         ('', 38)
         >>> l.read_until(EOI), l.n_consumed
         ('', 38)
+        >>> l = Lexer(" raw stripped : pear : :: : ")
+        >>> l.read_until(':', strip=True), l.n_consumed
+        ('raw stripped', 15)
+        >>> l.read_until(':', strip=True, expect_data='fruit'), l.n_consumed
+        ('pear', 22)
+        >>> l.read_until(':', strip=False, expect_data='fruit'), l.n_consumed
+        (' ', 24)
+        >>> l.read_until(':', strip=False, expect_data='fruit'), l.n_consumed
+        Traceback (most recent call last):
+        exceptions.ParseError: Missing expected data: 'fruit'.
+        >>> l.read_until(':'), l.n_consumed
+        ('', 25)
+        >>> l.read_until(':', strip=True, expect_data='fruit'), l.n_consumed
+        Traceback (most recent call last):
+        exceptions.ParseError: Missing expected data: 'fruit'.
         """
+        lex = self.copy()
         if stop is EOI:
-            read = self.input
-            self.input = ""
-            self.n_consumed += len(read)
-            return read
-        if stop == "":
-            return ""
-        try:
-            read, self.input = self.input.split(stop, 1)
-        except ValueError:
-            return None
-        self.n_consumed += len(read)
-        if consume_stop:
-            self.n_consumed += len(stop)
+            read = lex.input
+            lex.input = ""
+            lex.n_consumed += len(read)
         else:
-            self.input = stop + self.input
+            if stop == "":
+                return ""
+            try:
+                read, lex.input = lex.input.split(stop, 1)
+            except ValueError:
+                return None
+            lex.n_consumed += len(read)
+            if consume_stop:
+                lex.n_consumed += len(stop)
+            else:
+                lex.input = stop + lex.input
+        if strip:
+            read = read.strip()
+        if expect_data is not None and not read:
+            self.error(
+                f"Missing expected data: {repr(expect_data)}.",
+                (len(stop) if stop is not EOI else 0) + len(read.lstrip()),
+            )
+        self.become(lex)
         return read
 
-    def read_until_either(self, stops, consume_stop=True) -> ("stop", str) or None:
+    def read_until_either(self, stops, *args, **kwargs) -> ("stop", str) or None:
         """Raw read until the first stop is found, and return it
         so the user knows which one it was.
         In case of ex-aequo, the longest stop matches.
@@ -364,15 +425,25 @@ class Lexer(object):
             # None found.
             return None
         # Consume until then.
-        return first, self.read_until(first, consume_stop)
+        return first, self.read_until(first, *args, **kwargs)
 
-    def read_string_or_raw_until(self, stop, *args, **kwargs) -> (str, bool) or None:
+    def read_string_or_raw_until(
+        self, stop, *args, **kwargs
+    ) -> (str, bool) or None or str:
         r"""If there is a python string to parse next,
         consume it then find and consume the stop, erroring on unwanted additional data.
         Otherwise, read and return the stripped raw input until the stop.
         In addition, return True if the read was raw, False otherwise.
-        raw_guards stops are given to error out if they are found
-        before the actual stop sign in case of a raw read.
+
+        consume_stop: False to stop before the matching stop.
+
+        raw_guards: These stops are given to error out if they are found
+                    before the actual stop sign in case of a raw read.
+
+        expect_data: Names data expected to be not empty (or only whitespace)
+                     in case of a raw read.
+                     When provided, only the string is returned (not the boolean)
+                     or None if no stop was found.
 
         With a string.
         >>> l = Lexer("  'string' :: next")
@@ -404,6 +475,27 @@ class Lexer(object):
         >>> l = Lexer("  'raw  ")
         >>> l.read_string_or_raw_until(EOI), l.n_consumed
         (("'raw", True), 8)
+
+        Drop the 'raw' information when expecting particular data.
+        >>> l = Lexer("  'pear' :: ")
+        >>> l.read_string_or_raw_until('::', expect_data='fruit'), l.n_consumed
+        ('pear', 11)
+        >>> l = Lexer("  pear :: ")
+        >>> l.read_string_or_raw_until('::', expect_data='fruit'), l.n_consumed
+        ('pear', 9)
+        >>> l = Lexer("  ' pear ' :: ")
+        >>> l.read_string_or_raw_until('::', expect_data='fruit'), l.n_consumed
+        (' pear ', 13)
+        >>> l = Lexer("   :: ") # No fruit.
+        >>> l.read_string_or_raw_until('::', expect_data='fruit')
+        Traceback (most recent call last):
+        exceptions.ParseError: Missing expected data: 'fruit'.
+        >>> l = Lexer(" '  ' :: ") # Explicit blank fruit.
+        >>> l.read_string_or_raw_until('::', expect_data='fruit'), l.n_consumed
+        ('  ', 8)
+        >>> l = Lexer(" '' :: ") # Explicit empty fruit.
+        >>> l.read_string_or_raw_until('::', expect_data='fruit'), l.n_consumed
+        ('', 6)
 
         With unwanted data.
         >>> l = Lexer("  'string' unwanted :: next")
@@ -452,11 +544,18 @@ class Lexer(object):
         """
         if (r := self.read_string_or_raw_until_either([stop], *args, **kwargs)) is None:
             return None
-        return r[1], r[2]
+        try:
+            return r[1], r[2]
+        except IndexError:
+            return r[1]
 
     def read_string_or_raw_until_either(
-        self, stops, raw_guards=["\n"], consume_stop=True
-    ) -> ("stop", str, bool) or None:
+        self,
+        stops,
+        raw_guards=["\n"],
+        consume_stop=True,
+        expect_data=None,
+    ) -> ("stop", str, bool) or None or ("stop", str):
         """Same that read_string_or_raw_until,
         but defer to `read_until_either` instead of `read_until`.
         >>> l = Lexer("  'string' :: next")
@@ -489,7 +588,7 @@ class Lexer(object):
                 )
             # Commit to this lexing.
             self.become(lex)
-            return stop, read, False
+            return (stop, read, False) if expect_data is None else (stop, read)
         if (r := lex.read_until_either(stops + raw_guards, consume_stop)) is None or (
             r[0] not in stops and r[0] in raw_guards
         ):
@@ -509,4 +608,184 @@ class Lexer(object):
                 self.lstrip()
                 self.error(f"Unexpected data found before string: {repr(b.strip())}.")
         self.become(lex)
-        return stop, read.strip(), True
+        if not (read := read.strip()) and expect_data is not None:
+            self.error(
+                f"Missing expected data: {repr(expect_data)}.",
+                (len(stop) if stop is not EOI else 0) + len(read.lstrip()),
+            )
+        return (stop, read, True) if expect_data is None else (stop, read)
+
+    def read_parenthesized(self) -> str:
+        """Read and consume raw or quoted string within parentheses.
+        >>> l = Lexer(" (raw read) ")
+        >>> l.read_parenthesized(), l.n_consumed
+        ('raw read', 11)
+        >>> Lexer(''' (don't bother with unmatched quotes) ''').read_parenthesized()
+        "don't bother with unmatched quotes"
+        >>> Lexer(''' ("but don't neglect quoting (all) if it isn't unambiguous") ''').read_parenthesized()
+        "but don't neglect quoting (all) if it isn't unambiguous"
+
+        Check for parentheses closing and read consistency.
+        >>> l = Lexer(" no opening) ")
+        >>> l.read_parenthesized()
+        Traceback (most recent call last):
+        exceptions.ParseError: Missing opening parenthesis.
+        >>> l.n_consumed
+        1
+        >>> l = Lexer(" (no closing ")
+        >>> l.read_parenthesized()
+        Traceback (most recent call last):
+        exceptions.ParseError: Unmatched parenthesis.
+        >>> l.n_consumed
+        2
+        >>> l = Lexer(" (not 'all' quoted) ")
+        >>> l.read_parenthesized()
+        Traceback (most recent call last):
+        exceptions.ParseError: ...
+        """
+        if not self.find("("):
+            self.lstrip()
+            self.error("Missing opening parenthesis.")
+        if (read := self.read_string_or_raw_until(")")) is None:
+            self.error("Unmatched parenthesis.", 1)
+        read, _ = read
+        return read
+
+    line_stops = ["\n", EOI]
+
+    def read_line(self, comment_signs=["#"], strip=True, **kwargs) -> str:
+        r"""Raw read until first comment sign is found, or EOL or EOI.
+        >>> Lexer("  raw-read this line # not this comment ").read_line()
+        'raw-read this line'
+        >>> Lexer("   # c ").read_line()
+        ''
+        >>> Lexer("   # c ").read_line(strip=False)
+        '   '
+        >>> Lexer("   # c ").read_line(expect_data='anything')
+        Traceback (most recent call last):
+        exceptions.ParseError: Missing expected data: 'anything'.
+        >>> Lexer(" and without a comment ? \n next").read_line()
+        'and without a comment ?'
+        """
+        stop, read = self.read_until_either(
+            comment_signs + self.line_stops, strip=strip, **kwargs
+        )
+        if stop in comment_signs:
+            # Consume and ignore anything after the sign.
+            _ = self.read_until_either(self.line_stops)
+        return read
+
+    def find_empty_line(self, comment_signs=["#"]) -> bool:
+        r"""Consume whitespace input until the end of line, dismissing possible comment.
+        Return false if none is found.
+        >>> l = Lexer(" # finished line \n nextline")
+        >>> l.find_empty_line(), l.n_consumed
+        (True, 18)
+        >>> l = Lexer("  ")
+        >>> l.find_empty_line(), l.n_consumed
+        (True, 2)
+        >>> l = Lexer("\n") # EOL
+        >>> l.find_empty_line(), l.n_consumed
+        (True, 1)
+        >>> l = Lexer("") # EOI
+        >>> l.find_empty_line(), l.n_consumed
+        (True, 0)
+        >>> l = Lexer(" rest # unfinished line ")
+        >>> l.find_empty_line(), l.n_consumed
+        (False, 0)
+        >>> l = Lexer(" rest \n unfinished line ")
+        >>> l.find_empty_line(), l.n_consumed
+        (False, 0)
+        >>> l = Lexer(" rest  ")
+        >>> l.find_empty_line(), l.n_consumed
+        (False, 0)
+        """
+        lex = self.copy()
+        read = lex.read_line(comment_signs)
+        if read.strip():
+            return False
+        self.become(lex)
+        return True
+
+    def check_empty_line(self, comment_signs=["#"]):
+        r"""Consume input until the end of line,
+        dismissing possible whitespace and comments.
+        Raise if unexpected data is found.
+        >>> Lexer(" # finished line \n nextline").check_empty_line()
+        >>> Lexer("  ").check_empty_line()
+        >>> Lexer("").check_empty_line()
+        >>> Lexer(" rest # unfinished line ").check_empty_line()
+        Traceback (most recent call last):
+        exceptions.ParseError: Unexpected data after end of line: 'rest'.
+        """
+        n = self.n_consumed
+        read = self.read_line(comment_signs)
+        if r := read.strip():
+            self.error(
+                f"Unexpected data after end of line: {repr(r)}.",
+                pos=n + len(read),
+            )
+
+    def read_heredoc_like(self, name="file", EOR=None, comment_signs=["#"]):
+        r"""Multiline, dedented raw read delimited by the first (split) marker found.
+           ······EOR # <- Anything with no whitespace inside.
+            Super-verbatim read
+            with newlines inside
+                indentation kept
+            and not*(hi'ng" par#sed at-all
+            until..
+        EOR # <- read terminates here.
+
+        If the EOR marker is provided, assume it has already been consumed.
+
+        No dedentation occurs if the marker is triangle-braced:
+        ·····<EOR>
+          indented with 2 spaces.  <EOR>
+
+        >>> l = Lexer(" EOR # opening marker\n raw\n read\nEOR # closing marker")
+        >>> l.read_heredoc_like(), l.n_consumed
+        ('raw\nread\n', 36)
+
+        >>> l = Lexer(" <EOR> # opening no-dedent marker\n raw\n read\n<EOR> # close")
+        >>> l.read_heredoc_like(), l.n_consumed
+        (' raw\n read\n', 50)
+
+        >>> l = Lexer(" EOR # opening marker\n raw\n read\n # NO closing marker")
+        >>> l.read_heredoc_like()
+        Traceback (most recent call last):
+        exceptions.ParseError: Missing closing file marker: 'EOR'.
+
+        >>> l = Lexer(" EOR extra data\n raw\n read\nEOR # closing marker")
+        >>> l.read_heredoc_like()
+        Traceback (most recent call last):
+        exceptions.ParseError: Unexpected data after end of line: 'extra data'.
+
+        >>> Lexer(" ").read_heredoc_like()
+        Traceback (most recent call last):
+        exceptions.ParseError: Unexpected end of file when reading end-of-file marker.
+
+        >>> l = Lexer(" marker\n already\n given EOR ")
+        >>> l.read_heredoc_like(EOR='EOR'), l.n_consumed # dedentation still occurs.
+        ('marker\nalready\ngiven ', 27)
+
+        >>> l = Lexer(" marker\n already\n given <EOR> ")
+        >>> l.read_heredoc_like(EOR="<EOR>"), l.n_consumed # dedentation does not occur.
+        (' marker\n already\n given ', 29)
+        """
+        marker_known = EOR is not None
+        # Find first marker.
+        if not marker_known and not (EOR := self.read_split()):
+            self.error(f"Unexpected end of file when reading end-of-{name} marker.")
+        # Save position for possible later error message.
+        n = self.n_consumed
+        # Nothing expected next on this line.
+        if not marker_known:
+            self.check_empty_line(comment_signs)
+
+        # Use it to capture all file content.
+        if (read := self.read_until(EOR)) is None:
+            self.error(f"Missing closing {name} marker: {repr(EOR)}.", pos=n - len(EOR))
+        # Dedent if requested.
+        if not (EOR.startswith("<") and EOR.endswith(">")):
+            read = tw.dedent(read)
+        return read

@@ -1,5 +1,7 @@
 from exceptions import SourceError, NoSectionMatch
-from lexer import Lexer
+from lexer import Lexer, EOI
+
+from types import MethodType
 
 
 class Reader(object):
@@ -53,12 +55,44 @@ class Reader(object):
         if not lex.find(":"):
             lex.error(f"Missing colon ':' to introduce {self.section_name()} section.")
 
+    def check_double_colon(self):
+        """Check that the section is correctly introduced by two colons '::'."""
+        lex = self.lexer
+        if not lex.find("::"):
+            lex.error(
+                "Missing double colon '::' "
+                f"to introduce {self.section_name()} section."
+            )
+
     def soft_match(self, automaton):
         """Produce a correct soft matching result based on lexing done so far."""
         return MatchResult(
             type="soft",
             lines_automaton=automaton,
             end=self.lexer.n_consumed,
+        )
+
+    def hard_match(self, object):
+        """Produce a correct hard matching result based on lexing done so far."""
+        return MatchResult(
+            type="hard",
+            parsed=object,
+            end=self.lexer.n_consumed,
+        )
+
+    # Defer basic calls to Lexer's API.
+    _lexer_defer = [
+        f for f in dir(Lexer) if any(f.startswith(p) for p in ("read", "find", "check"))
+    ] + ["error"]
+
+    def __getattr__(self, name):
+        """Defer basic calls to Lexer's API, provided they conform to the passlist."""
+        if name in self._lexer_defer:
+            method = getattr(Lexer, name)
+            return MethodType(method, self.lexer)
+        raise AttributeError(
+            f"{type(self).__name__} has no attribute '{name}', "
+            f"and '{name}' is not a method defered to Lexer."
         )
 
 
