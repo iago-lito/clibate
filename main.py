@@ -1,8 +1,8 @@
 """Sketch the main structure of the spec file modular parsing.
 """
 
-from parser import Parser
 from copy import CopyReader
+from parser import Parser
 
 
 if __name__ == "__main__":

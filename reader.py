@@ -54,4 +54,16 @@ class LinesAutomaton(object):
     until another reader starts matching.
     """
 
-    pass
+    def feed(self, line):
+        """Process one line and keep constructing the object from it.
+        Raise LineFeedError in case processing failed.
+        """
+        raise NotImplementedError("Missing method 'feed' for {type(self).__name__}.")
+
+    def terminate(self):
+        """Signal that all lines have been fed.
+        Finish constructing the object and return it.
+        """
+        raise NotImplementedError(
+            "Missing method 'terminate' for {type(self).__name__}."
+        )

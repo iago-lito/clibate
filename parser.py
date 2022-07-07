@@ -1,4 +1,4 @@
-from exceptions import ParseError
+from exceptions import ParseError, LineFeedError
 
 
 class Parser(object):
@@ -29,7 +29,7 @@ class Parser(object):
             res += f" in {self.filename}"
         return res
 
-    def find_matching_reader(self) -> "MatchResult":
+    def find_matching_reader(self) -> "MatchResult" or None:
         """Consume necessary input for one reader to match at current position."""
 
         input = self.input
@@ -39,9 +39,6 @@ class Parser(object):
         for reader in self.readers:
             if m := reader.match(input):
                 matches.append((m, reader))
-        # Check that exactly one reader matches.
-        if len(matches) == 0:
-            raise ParseError(f"No readers matching input ({self.position}).")
         if len(matches) > 1:
             readers = [type(r).__name__ for _, r in matches]
             if len(readers) == 2:
@@ -53,6 +50,10 @@ class Parser(object):
             raise ParseError(
                 f"Ambiguity in parsing: {readers} match at {self.position}."
             )
+        # It may be that none matched.
+        if len(matches) == 0:
+            return None
+
         [(match, reader)] = matches
 
         # Consume utilized input (updating position).
@@ -70,4 +71,54 @@ class Parser(object):
         so they consume it bit by bit.
         """
 
-        match = self.find_matching_reader()
+        # One iteration, one collected object.
+        collect = []
+        match = None  # Currently being processed.
+        while True:
+
+            if not match:
+                match = self.find_matching_reader()
+
+            if not match:
+                raise ParseError(f"No readers matching input ({self.position}).")
+
+            if match.type == "hard":
+                # The reader has already produced a valid object.
+                collect.append(match.parsed)
+                if not self.input:
+                    # Consumed!
+                    break
+                match = None
+                continue
+
+            # Otherwise, it has returned an automaton
+            # that we need to feed with lines until another reader matches.
+            automaton = match.lines_automaton
+            while True:
+                if not self.input:
+                    collect.append(automaton.terminate())
+                    match = None
+                    break
+                match = self.find_matching_reader()
+                if not match:
+                    # Extract current line and process it.
+                    line, remaining = self.input.split("\n", 1)
+                    try:
+                        automaton.feed(line)
+                    except LineFeedError as e:
+                        raise ParseError(
+                            "Automaton failed on the following line:\n"
+                            f"--> {line}\n({self.position})"
+                        ) from e
+                    self.input = remaining
+                    self.linenum += 1
+                    self.colnum = 1
+                    continue
+                # In case of match, the automaton should be done.
+                collect.append(automaton.terminate())
+                break
+            if not match and not self.input:
+                break
+
+        # All input has been parsed.
+        return collect

@@ -1,13 +1,14 @@
 from actor import Actor
+from exceptions import LineFeedError
 from reader import Reader, MatchResult, LinesAutomaton
 
 
 class Copy(Actor):
     "Responsible for copying a list of files from the input folder to the test folder."
 
-    def __init__(self):
-        self.sources = []
-        self.targets = []
+    def __init__(self, sources, targets):
+        self.sources = sources
+        self.targets = targets
 
 
 class CopyReader(Reader):
@@ -37,5 +38,25 @@ class CopyReader(Reader):
 class CopyAutomaton(LinesAutomaton):
     "Constructs the Copy actor line by line."
 
+    arrow = "->"
+
     def __init__(self):
-        self.copy = Copy()
+        self.sources = []
+        self.targets = []
+
+    def feed(self, line):
+        """Simple lines of the form 'source -> target'."""
+        # Strip comment.
+        try:
+            line, _ = line.split("#", 1)
+        except ValueError:
+            pass
+        if self.arrow in line:
+            src, tgt = line.split("->", 1)
+            self.sources.append(src.strip())
+            self.targets.append(tgt.strip())
+            return
+        raise LineFeedError(f"Could not parse line as a Copy line.")
+
+    def terminate(self):
+        return Copy(self.sources, self.targets)

@@ -10,3 +10,8 @@ class SourceError(Exception):
 class ParseError(Exception):
     "Error during parsing of the tests specification file."
     pass
+
+
+class LineFeedError(Exception):
+    "Error during line processing with a soft reader."
+    pass
