@@ -85,3 +85,7 @@ class TestSet(object):
         """Create file within the test folder (erasing existing ones)."""
         with open(Path(self.test_folder, name), "w") as file:
             file.write(content)
+
+    def update_command(self, command):
+        """Replace/update the shell command to run for the tests."""
+        self.command = command

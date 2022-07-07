@@ -1,4 +1,4 @@
-from exceptions import SourceError, NoSectionMatch
+from exceptions import SourceError, NoSectionMatch, ParseError
 from lexer import Lexer, EOI
 
 from types import MethodType
@@ -65,6 +65,26 @@ class Reader(object):
                 "Missing double colon '::' "
                 f"to introduce {self.section_name()} section."
             )
+
+    def check_colon_type(self) -> (":" or "::"):
+        """Check wether the section is introduced
+        by a colon ':' (to spot soft-matchers)
+        or a double colon '::' (to spot hard-matchers),
+        Errors out otherwise."""
+        try:
+            self.check_double_colon()
+            return "::"
+        except ParseError:
+            pass
+        try:
+            self.check_colon()
+            return ":"
+        except ParseError:
+            pass
+        self.lexer.error(
+            "Missing colon ':' or double colon '::' "
+            f"to introduce {self.section_name()} section."
+        )
 
     def soft_match(self, automaton):
         """Produce a correct soft matching result based on lexing done so far."""

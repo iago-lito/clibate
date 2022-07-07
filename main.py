@@ -1,6 +1,7 @@
 """Sketch the main structure of the spec file modular parsing.
 """
 
+from command import CommandReader
 from copy import CopyReader
 from file import FileReader
 from parser import Parser
@@ -16,7 +17,9 @@ if __name__ == "__main__":
     with open(spec_file, "r") as f:
         specs = f.read()
 
-    parser = Parser(specs, [CopyReader(), FileReader()], filename=spec_file)
+    parser = Parser(
+        specs, [CopyReader(), FileReader(), CommandReader()], filename=spec_file
+    )
 
     res = parser.parse()
 

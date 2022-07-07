@@ -1,6 +1,7 @@
 # A basic tests specification file to toy around with the framework.
 # Toying around with the 'awk' command.
 
+command: cat input_file | awk -f main.awk
 copy: dummy_data -> input_file
 
 file (main.awk):: EOF
