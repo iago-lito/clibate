@@ -1,0 +1,3 @@
+copy: # Comment.
+    a -> b
+    c -> d
