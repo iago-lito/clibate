@@ -22,3 +22,9 @@ class ParseError(Exception):
 class NoSectionMatch(Exception):
     "Raised to the parser by a reader that does not match given input."
     pass
+
+
+class TestSetError(Exception):
+    "Error with organisation of the runs (folders structure, shell command..)"
+    __test__ = False  # Avoid being collected by Pytest.
+    pass
