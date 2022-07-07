@@ -675,6 +675,43 @@ class Lexer(object):
             _ = self.read_until_either(self.line_stops)
         return read
 
+    def read_string_or_raw_line(
+        self, comment_signs=["#"], **kwargs
+    ) -> (str, bool) or str:
+        r"""Like read_line, but the line may be entirely quoted.
+        The returned boolean is True in case of a raw (unquoted) read.
+
+        >>> Lexer("  raw-read this line # not this comment ").read_string_or_raw_line()
+        ('raw-read this line', True)
+        >>> Lexer("  'quote-read #this one' # not comment ").read_string_or_raw_line()
+        ('quote-read #this one', False)
+        >>> Lexer(" raw-read this line without a comment ").read_string_or_raw_line()
+        ('raw-read this line without a comment', True)
+        >>> Lexer(" raw-read this short line \n next line").read_string_or_raw_line()
+        ('raw-read this short line', True)
+        >>> Lexer("   # c ").read_string_or_raw_line()
+        ('', True)
+        >>> Lexer(" ''  # c ").read_string_or_raw_line()
+        ('', False)
+        >>> Lexer(" a # c ").read_string_or_raw_line(expect_data='anything')
+        'a'
+        >>> Lexer("   # c ").read_string_or_raw_line(expect_data='anything')
+        Traceback (most recent call last):
+        exceptions.ParseError: Missing expected data: 'anything'.
+        >>> Lexer(" ''  # c ").read_string_or_raw_line(expect_data='anything')
+        ''
+        """
+        r = self.read_string_or_raw_until_either(
+            comment_signs + self.line_stops, **kwargs
+        )
+        if r[0] in comment_signs:
+            # Consume and ignore anything after the sign.
+            _ = self.read_until_either(self.line_stops)
+        try:
+            return r[1], r[2]
+        except IndexError:
+            return r[1]
+
     def find_empty_line(self, comment_signs=["#"]) -> bool:
         r"""Consume whitespace input until the end of line, dismissing possible comment.
         Return false if none is found.

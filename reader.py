@@ -15,6 +15,8 @@ class Reader(object):
     When started, they are given the rest of the input line by line
     until another reader matches.
 
+    Note that the match type is not fixed throughout the lifetime of the reader.
+
     As the parent class of all readers,
     Reader offers a Lexer-wrapping API for basic parsing of the input given in match.
     So, although in principle every subtype may rewrite everything

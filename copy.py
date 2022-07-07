@@ -19,9 +19,10 @@ class Copy(Actor):
 class CopyReader(Reader):
     """Soft reader with a simple block of lines.
 
-    copy:
-        original_input_file -> name_in_test_folder
-        path/to/other_file -> copy2
+    copy: original_input_file -> name_in_test_folder
+           path/to/other_file -> copy2
+          plain_name # This one will keep its name.
+          A B C # Under the plain form, filenames can be gathered on the same line.
 
     """
 
@@ -43,23 +44,30 @@ class CopyAutomaton(LinesAutomaton):
         self.targets = []
 
     def feed(self, line):
-        """Simple lines of the form 'source -> target'.
+        """Simple lines of the form 'source -> target' or 'filename fn name'.
         Optionally quote the files to escape exotic chars, with python string syntax.
         """
-        l = Lexer(line).lstrip()
-        # Dismiss empty/comment lines.
-        if not l.input or l.match("#"):
+        l = Lexer(line)
+        if l.find_empty_line():
             return
 
-        n = l.n_consumed
         if (r := l.read_string_or_raw_until(self.arrow)) is None:
-            l.error(f"Could not find arrow ({self.arrow}) in Copy line.")
+            # No arrow found: interpret the line as a sequence of filenames.
+            # Either all quoted or none at all (then all raw reads).
+            if (name := l.read_python_string()) is None:
+                names = l.read_line().split()
+            else:
+                names = [name]
+                while (name := l.read_python_string()) is not None:
+                    names.append(name)
+                l.check_empty_line()
+            self.sources += names
+            self.targets += names
+            return
         src, raw = r
         if raw and not src:
-            l.error("Could not find source filename in Copy line.", pos=n)
-        _, tgt, raw = l.read_string_or_raw_until_either(["#", EOI])
-        if raw and not tgt:
-            l.error("Could not find destination filename in Copy line.")
+            l.error("Could not find source filename in Copy line.")
+        tgt = l.read_string_or_raw_line(expect_data="destination filename")
         # Ignore anything after the comment sign.
 
         self.sources.append(src)
