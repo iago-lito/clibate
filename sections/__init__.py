@@ -3,6 +3,7 @@
 types_accesses = """
     command.Command
     copy.Copy
+    exit_code.ExitCode
     file.File
     run.Run
 """

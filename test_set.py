@@ -1,4 +1,6 @@
-from exceptions import TestSetError
+from actor import Actor
+from checker import Checker
+from exceptions import TestSetError, SourceError
 
 from pathlib import Path
 import os
@@ -40,7 +42,9 @@ class TestSet(object):
         self.test_folder = None
 
         self.command = None
-        self.checkers = set()
+
+        # No duplicate checkers are allowed unless they have different types.
+        self.checkers = {}  # {type(checker): checker}
 
         # Whenever the command is run, record output for the checkers to work on.
         self.stdout = None  # raw bytes
@@ -65,9 +69,14 @@ class TestSet(object):
         """Delete the whole test folder."""
         shu.rmtree(self.test_folder)
 
-    def change(self, actor):
+    def change(self, object):
         """Process action to modify environment before the next test."""
-        actor.execute(self)
+        if isinstance(actor := object, Actor):
+            actor.execute(self)
+        elif isinstance(checker := object, Checker):
+            self.add_checker(checker)
+        else:
+            raise SourceError(f"Invalid change object type: {type(object).__name__}.")
 
     def is_input_file(self, filename) -> bool:
         """Test whether the given file exists in the input folder."""
@@ -105,3 +114,7 @@ class TestSet(object):
         self.exitcode = process.returncode
         self.stdout = process.stdout.read()
         self.stderr = process.stderr.read()
+
+    def add_checker(self, c):
+        """Append a new checker to the checkers set."""
+        self.checkers[type(c)] = c

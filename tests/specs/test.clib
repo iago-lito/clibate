@@ -21,8 +21,8 @@ file (main.awk):: EOF
   }
 EOF
 
-# TODO: establish expectations regarding the command output
-# and/or state of the test folder after the command.
+# Setup expectations.
+EXITCODE 0
 
 # Execute the command.
 RUN
