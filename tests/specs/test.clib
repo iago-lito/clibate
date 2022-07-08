@@ -21,9 +21,5 @@ file (main.awk):: EOF
   }
 EOF
 
-# Setup expectations.
-EXITCODE 0
-
-# Execute the command.
-RUN
-CHECK: The first basic test is running okay.
+Success: The first basic test is running okay.
+    A-B-C: 26

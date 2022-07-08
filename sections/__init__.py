@@ -7,6 +7,7 @@ types_accesses = """
     exit_code.ExitCode
     file.File
     run.Run
+    success.Success
 """
 
 default_readers = []

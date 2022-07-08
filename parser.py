@@ -126,9 +126,14 @@ class Parser(object):
             automaton = match.lines_automaton
             while True:
                 if not self.input:
-                    collect.append(automaton.terminate())
+                    try:
+                        collect.append(automaton.terminate())
+                    except ParseError as e:
+                        self.reraise(e)
                     match = None
                     break
+                # Save in case a parse error occurs during termination of current soft.
+                pos = self.position
                 match = self.find_matching_reader()
                 if not match:
                     # Extract current line and process it.
@@ -142,7 +147,10 @@ class Parser(object):
                     self.colnum = 1
                     continue
                 # In case of match, the automaton should be done.
-                collect.append(automaton.terminate())
+                try:
+                    collect.append(automaton.terminate())
+                except ParseError as e:
+                    raise ParseError(e.message + f" ({pos})") from e
                 break
             if not match and not self.input:
                 break

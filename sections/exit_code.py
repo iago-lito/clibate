@@ -7,11 +7,13 @@ for the next executed command(s):
 """
 
 from checker import Checker
-from reader import Reader, MatchResult
-from lexer import Lexer
+from reader import Reader
 
 
 class ExitCode(Checker):
+
+    expecting_code = True
+
     def __init__(self, code):
         self.code = code
 

@@ -43,9 +43,9 @@ class TestSet(object):
 
         self.command = None
 
-        # No duplicate checkers are allowed unless they have different types.
-        self.checkers = {}  # {type(checker): checker}
-        self.reports = []  # [(name, report (None on success))]
+        self.checkers = []
+        # A "test" result is a name + all reports by current checkers.
+        self.tests = []  # [(name, {checker: report (None on success)})]
 
         # Whenever the command is run, record output for the checkers to work on.
         self.stdout = None  # raw bytes
@@ -75,7 +75,7 @@ class TestSet(object):
         if isinstance(actor := object, Actor):
             actor.execute(self)
         elif isinstance(checker := object, Checker):
-            self.add_checker(checker)
+            self.add_checkers([checker])
         else:
             raise SourceError(f"Invalid change object type: {type(object).__name__}.")
 
@@ -116,15 +116,33 @@ class TestSet(object):
         self.stdout = process.stdout.read()
         self.stderr = process.stderr.read()
 
-    def add_checker(self, c):
-        """Append a new checker to the checkers set."""
-        self.checkers[type(c)] = c
+    def add_checkers(self, checkers, exclude=True):
+        """Append new checkers to the checkers set.
+        if 'exclude' is set, first remove all checkers
+        with overlapping expectations.
+        """
+        if exclude:
+            expectations = set()
+            for c in checkers:
+                for e in Checker._expectations:
+                    if eval(f"c.expecting_{e}"):
+                        expectations.add(e)
+            self.clear_checkers(expectations)
+        self.checkers += checkers
 
-    def run_checks(self, name):
-        """Run all checks and gather reports under the given name."""
-        for checker in self.checkers.values():
-            report = checker.check(self.exitcode, self.stdout, self.stderr)
-            self.reports.append((name, report))
+    def run_checks(self, name) -> bool:
+        """Run all checks and gather reports under the given name.
+        Return False if some checks failed.
+        """
+        success = True
+        reports = {}
+        for checker in self.checkers:
+            r = checker.check(self.exitcode, self.stdout, self.stderr)
+            if r is not None:
+                success = False
+            reports[checker] = r
+        self.tests.append((name, reports))
+        return success
 
     def report(self):
         """Organize all reports into a nice summary."""
@@ -139,17 +157,27 @@ class TestSet(object):
         def plur(n, p="s", s=""):
             return p if n > 1 else s
 
-        failed = [(name, report) for name, report in self.reports if report is not None]
-        n_total, n_failed = len(self.reports), len(failed)
+        # Gather only failed reports.
+        failed = []
+        for name, reports in self.tests:
+            failed_reports = {}
+            for checker, rep in reports.items():
+                if rep is not None:
+                    failed_reports[checker] = rep
+            if failed_reports:
+                failed.append((name, failed_reports))
+
+        n_total, n_failed = len(self.tests), len(failed)
         n_ok = n_total - n_failed
         if failed:
             print(
                 f"\n{red}🗙{reset} {n_failed} test{plur(n_failed)} "
                 f"ha{plur(n_failed, 've', 's')} failed:\n"
             )
-            for name, report in failed:
+            for name, reports in failed:
                 print(f"{blue}{name}{reset}")
-                print(report, end="\n\n")
+                for report in reports.values():
+                    print(report, end="\n\n")
             print(
                 f"{blue}{n_total}{reset} test{plur(n_total)} run: "
                 f"{green}{n_ok}{reset} success{plur(n_ok, 'es')}, "
@@ -163,3 +191,16 @@ class TestSet(object):
             symbol = f"{yellow}??"
             colon = "?"
         print(f"\n{symbol}{reset} Success{colon} {n_total} test{plur(n_total)} run.")
+
+    def clear_checkers(self, expectations=Checker._expectations):
+        """Clear all checkers setting such expectations."""
+        new_checkers = []
+        for c in self.checkers:
+            include = True
+            for e in expectations:
+                if eval(f"c.expecting_{e}"):
+                    include = False
+                    break
+            if include:
+                new_checkers.append(c)
+        self.checkers = new_checkers
