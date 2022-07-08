@@ -8,6 +8,7 @@ It sets up:
 Then it:
     - runs the test command
     - checks the result
+    - restore all saved files from backups, consuming backups.
     - produces a log message before the actual TestSet.report is invoked
 
 Also, the expected stdout is not checked exactly.
@@ -50,6 +51,7 @@ class Success(Actor):
             print(f" {green}PASS{reset}")
         else:
             print(f" {red}FAIL{reset}")
+        ts.restore_all_files(keep_backup=False)
 
 
 class SuccessReader(Reader):

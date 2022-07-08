@@ -3,6 +3,7 @@ from checker import Checker
 from exceptions import TestSetError, SourceError
 
 from pathlib import Path
+from tempfile import TemporaryFile
 import os
 import shutil as shu
 import subprocess as sp
@@ -52,6 +53,15 @@ class TestSet(object):
         self.stderr = None  # raw bytes
         self.exitcode = None  # integer
 
+        # Some edits made to files are only temporary,
+        # save previous states in temporary files to retrieve them
+        # after each test.
+        self.backups = {}  # {filepath: tempfile}
+        # The tempfile contains the data as it was when the file was created
+        # or after the last test was run.
+        # If a file does not have an associated backup,
+        # then it has not undergone temporary changes that need a reset.
+
     def prepare(self):
         """Pick a name for the test folder and send prepare commands."""
         i = 0
@@ -67,8 +77,11 @@ class TestSet(object):
         os.chdir(self.test_folder)
 
     def cleanup(self):
-        """Delete the whole test folder."""
+        """Delete the whole test folder and clear backup data."""
         shu.rmtree(self.test_folder)
+        for temp in self.backups.values():
+            temp.close()
+        self.backups.clear()
 
     def change(self, object):
         """Process action to modify environment before the next test."""
@@ -204,3 +217,60 @@ class TestSet(object):
             if include:
                 new_checkers.append(c)
         self.checkers = new_checkers
+
+    def canonicalize_test_path(self, path):
+        """When given a simple local string or a full path, normalize."""
+        if path == Path(path).resolve():
+            return path
+        return Path(self.test_folder, path).resolve()
+
+    def backup_file(self, filename, override):
+        """Create a temporary backup for this file name.
+        Override existing backup if requested.
+        """
+        if not (path := self.canonicalize_test_path(filename)).exists():
+            raise TestSetError(f"Cannot backup unexistent file {path}.")
+        if path in self.backups and not override:
+            return
+        # Create a new backup.
+        temp = TemporaryFile()
+        with open(path, "rb") as file:
+            temp.write(file.read())
+        # Close existing files to not wait for gc.
+        try:
+            self.backups.pop(path).close()
+        except KeyError:
+            pass
+        # Reset cursor for future reads.
+        temp.seek(0)
+        self.backups[path] = temp
+
+    def delete_backup(self, filename):
+        """Forget about previous revision of the file."""
+        path = self.canonicalize_test_path(filename)
+        self.backups.pop(path).close()
+
+    def restore_file(self, filename, keep_backup, error_if_no_backup=True):
+        """Transform the file so it becomes like the last available backup of it."""
+        path = self.canonicalize_test_path(filename)
+        try:
+            temp = self.backups[path]
+        except KeyError:
+            if error_if_no_backup:
+                raise TestSetError(f"No available backup to restore file {path}.")
+            else:
+                # Consider the file is restored.
+                return
+        with open(path, "wb") as file:
+            file.write(temp.read())
+        if not keep_backup:
+            self.delete_backup(path)
+        else:
+            # Reset cursor for future reads
+            temp.seek(0)
+
+    def restore_all_files(self, *args, **kwargs):
+        """All files with a backup will be restored."""
+        paths = [*self.backups.keys()]
+        for path in paths:
+            self.restore_file(path, *args, **kwargs)
