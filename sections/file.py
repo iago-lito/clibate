@@ -1,10 +1,21 @@
+"""The File section creates a file in the test folder with heredoc-like quoting.
+
+    file (filename.ext): EOF # <- pick any marker with no whitespace inside.
+        All lines here are dedented
+        then introduced verbatim into the file # including comments
+        # empty lines
+
+        # and even other section's triggers because it's a hard match.
+        section: will appear in `filename.ext` without breaking the parse.
+    EOF
+
+"""
+
 from actor import Actor
 from reader import Reader
 
 
 class File(Actor):
-    """Responsible for creating a file in the test folder."""
-
     def __init__(self, name, content):
         self.name = name
         self.content = content
@@ -14,7 +25,6 @@ class File(Actor):
 
 
 class FileReader(Reader):
-    """Hard reader using a heredoc-like marker to find the end of the match."""
 
     keyword = "file"
 

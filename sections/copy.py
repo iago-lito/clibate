@@ -1,11 +1,27 @@
+"""The Copy section brings files from the input folder to the test folder:
+
+    copy:
+        # Files may be renamed, use the arrow '->' to this end.
+        input_file -> renamed_into_test_file
+        path/to/input_file2 -> test_file2
+
+        # Don't use the arrow to not rename them.
+        non-renamed_file_1
+        non-renamed_file_2 non-renamed_file_3 # Then several names by line is possible.
+
+Filenames are parsed verbatim. In cases where this would breaks parsing,
+quote them with python-like strings.
+
+    copy: "ambiguous -> arrow in filename" -> r'ambiguous#commentsign' # True comment.
+
+"""
+
 from actor import Actor
 from lexer import Lexer, EOI
 from reader import Reader, MatchResult, LinesAutomaton
 
 
 class Copy(Actor):
-    "Responsible for copying a list of files from the input folder to the test folder."
-
     def __init__(self, sources, targets):
         self.sources = sources
         self.targets = targets
@@ -17,14 +33,6 @@ class Copy(Actor):
 
 
 class CopyReader(Reader):
-    """Soft reader with a simple block of lines.
-
-    copy: original_input_file -> name_in_test_folder
-           path/to/other_file -> copy2
-          plain_name # This one will keep its name.
-          A B C # Under the plain form, filenames can be gathered on the same line.
-
-    """
 
     keyword = "copy"
 
