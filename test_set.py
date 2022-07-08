@@ -125,3 +125,41 @@ class TestSet(object):
         for checker in self.checkers.values():
             report = checker.check(self.exitcode, self.stdout, self.stderr)
             self.reports.append((name, report))
+
+    def report(self):
+        """Organize all reports into a nice summary."""
+
+        # Escape codes for coloring output.
+        red = "\x1b[31m"
+        blue = "\x1b[34m"
+        green = "\x1b[32m"
+        yellow = "\x1b[33m"
+        reset = "\x1b[0m"
+
+        def plur(n, p="s", s=""):
+            return p if n > 1 else s
+
+        failed = [(name, report) for name, report in self.reports if report is not None]
+        n_total, n_failed = len(self.reports), len(failed)
+        n_ok = n_total - n_failed
+        if failed:
+            print(
+                f"\n{red}🗙{reset} {n_failed} test{plur(n_failed)} "
+                f"ha{plur(n_failed, 've', 's')} failed:\n"
+            )
+            for name, report in failed:
+                print(f"{blue}{name}{reset}")
+                print(report, end="\n\n")
+            print(
+                f"{blue}{n_total}{reset} test{plur(n_total)} run: "
+                f"{green}{n_ok}{reset} success{plur(n_ok, 'es')}, "
+                f"{red}{n_failed}{reset} failure{plur(n_failed)}."
+            )
+            return
+        if n_ok:
+            symbol = f"{green}✔{reset}"
+            colon = ":"
+        else:
+            symbol = f"{yellow}??"
+            colon = "?"
+        print(f"\n{symbol}{reset} Success{colon} {n_total} test{plur(n_total)} run.")

@@ -23,4 +23,6 @@ if __name__ == "__main__":
     for actor in res:
         ts.change(actor)
 
+    ts.report()
+
     ts.cleanup()
