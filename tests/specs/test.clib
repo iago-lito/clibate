@@ -26,3 +26,4 @@ EXITCODE 0
 
 # Execute the command.
 RUN
+CHECK: The first basic test is running okay.

@@ -2,6 +2,10 @@
 All output (command success or failure)
 is captured by the test set for possible later checking.
 As a consequence, no error or test failure is expected happen when using RUN,
+
+    # Example.
+    RUN
+
 """
 
 from actor import Actor

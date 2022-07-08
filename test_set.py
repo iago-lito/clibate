@@ -45,6 +45,7 @@ class TestSet(object):
 
         # No duplicate checkers are allowed unless they have different types.
         self.checkers = {}  # {type(checker): checker}
+        self.reports = []  # [(name, report (None on success))]
 
         # Whenever the command is run, record output for the checkers to work on.
         self.stdout = None  # raw bytes
@@ -118,3 +119,9 @@ class TestSet(object):
     def add_checker(self, c):
         """Append a new checker to the checkers set."""
         self.checkers[type(c)] = c
+
+    def run_checks(self, name):
+        """Run all checks and gather reports under the given name."""
+        for checker in self.checkers.values():
+            report = checker.check(self.exitcode, self.stdout, self.stderr)
+            self.reports.append((name, report))

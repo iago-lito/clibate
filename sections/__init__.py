@@ -1,6 +1,7 @@
 # Bundle here the implementation of various common sections when using clibate.
 
 types_accesses = """
+    check.Check
     command.Command
     copy.Copy
     exit_code.ExitCode
