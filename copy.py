@@ -1,5 +1,6 @@
 from actor import Actor
 from exceptions import LineFeedError
+from parsing_utils import find_python_string
 from reader import Reader, MatchResult, LinesAutomaton
 
 
@@ -35,6 +36,26 @@ class CopyReader(Reader):
         return None
 
 
+def second_filename(rest):
+    """Factorize common procedure in CopyAutomaton.feed,
+    after the arrow has been found.
+    """
+    if s := find_python_string(rest):
+        tgt, rest = s
+        rest = rest.lstrip()
+        # Only comment should remain.
+        if not rest.startswith("#"):
+            raise LineFeedError(f"Unexpected token(s) in Copy line: {rest}.")
+    else:
+        # Strip comment.
+        try:
+            rest, _ = rest.split("#", 1)
+        except ValueError:
+            pass
+        tgt = rest.strip()
+    return tgt
+
+
 class CopyAutomaton(LinesAutomaton):
     "Constructs the Copy actor line by line."
 
@@ -45,18 +66,29 @@ class CopyAutomaton(LinesAutomaton):
         self.targets = []
 
     def feed(self, line):
-        """Simple lines of the form 'source -> target'."""
-        # Strip comment.
-        try:
-            line, _ = line.split("#", 1)
-        except ValueError:
-            pass
-        if self.arrow in line:
-            src, tgt = line.split("->", 1)
-            self.sources.append(src.strip())
-            self.targets.append(tgt.strip())
-            return
-        raise LineFeedError(f"Could not parse line as a Copy line.")
+        """Simple lines of the form 'source -> target'.
+        Optionally quote the files to escape exotic chars, with python string syntax.
+        """
+        if s := find_python_string(line):
+            src, rest = s
+            rest = rest.lstrip()
+            if not rest.startswith(self.arrow):
+                raise LineFeedError(
+                    f"Could not find arrow ({self.arrow}) in Copy line."
+                )
+            rest = rest.removeprefix(self.arrow)
+            tgt = second_filename(rest)
+        else:
+            try:
+                src, rest = line.split(self.arrow, 1)
+            except ValueError:
+                raise LineFeedError(
+                    f"Could not find arrow ({self.arrow}) in Copy line."
+                )
+            src = src.strip()
+            tgt = second_filename(rest)
+        self.sources.append(src)
+        self.targets.append(tgt)
 
     def terminate(self):
         return Copy(self.sources, self.targets)
