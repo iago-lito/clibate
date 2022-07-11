@@ -510,3 +510,46 @@ class Lexer(object):
                 self.error(f"Unexpected data found before string: {repr(b.strip())}.")
         self.become(lex)
         return stop, read.strip(), True
+
+    def read_successive_strings(self, until=["#", EOI]):
+        """Read an alternated sequence of (stripped) raw reads and/or quoted strings.
+        Python's triple quotes are ambiguous in this context are are pretty much
+        guaranteed *not* to work fine.
+
+        >>> l = Lexer('''  a "b" this-isn't-one "this is" last ''')
+        >>> l.read_successive_strings()
+        ['a', 'b', "this-isn't-one", 'this is', 'last']
+        >>> # Only one ---v--- char changed.
+        >>> l = Lexer(''' "a "b" this-isn't-one "this is" last ''')
+        >>> l.read_successive_strings()
+        ['a ', 'b', " this-isn't-one ", 'this is" last']
+        >>> # Only another char changed -------------v
+        >>> l = Lexer('''  a "b" this-isn't-one "this'is" last ''')
+        >>> l.read_successive_strings()
+        ['a', 'b', 'this-isn', 't-one "this', 'is" last']
+        """
+        out = False
+        stops = ['"', "'"] + until
+        results = []
+        while True:  # Once for every name.
+            raw = None
+            while (string := self.read_python_string()) is None:
+                if raw is None:
+                    raw = ""
+                elif self.input:
+                    raw += s
+                    assert self.match(s)
+                s, n = self.read_until_either(stops, False)
+                raw += n
+                if s in until:
+                    out = True
+                    break
+            if raw is not None:
+                raw = raw.strip()
+            if raw:
+                results.append(raw)
+            if string is not None:
+                results.append(string)
+            if out:
+                break
+        return results
