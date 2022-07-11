@@ -1,6 +1,5 @@
 from actor import Actor
-from exceptions import LineFeedError
-from parsing_utils import find_python_string
+from lexer import Lexer, EOI
 from reader import Reader, MatchResult, LinesAutomaton
 
 
@@ -21,39 +20,17 @@ class CopyReader(Reader):
 
     """
 
+    keyword = "copy"
+
     def match(self, input):
-        # Extract one line.
-        try:
-            line, _ = input.split("\n", 1)
-            end = len(line) + 1
-        except ValueError:
-            # Reached EOF.
-            line = input
-            end = len(line)
-        if line.startswith("copy:"):
-            # Ignore the rest of the line for now.
-            return MatchResult(type="soft", lines_automaton=CopyAutomaton(), end=end)
-        return None
-
-
-def second_filename(rest):
-    """Factorize common procedure in CopyAutomaton.feed,
-    after the arrow has been found.
-    """
-    if s := find_python_string(rest):
-        tgt, rest = s
-        rest = rest.lstrip()
-        # Only comment should remain.
-        if not rest.startswith("#"):
-            raise LineFeedError(f"Unexpected token(s) in Copy line: {rest}.")
-    else:
-        # Strip comment.
-        try:
-            rest, _ = rest.split("#", 1)
-        except ValueError:
-            pass
-        tgt = rest.strip()
-    return tgt
+        l = Lexer(input)
+        if not l.match(self.keyword):
+            return None
+        if not l.find(":"):
+            l.error("Missing colon to introduce Copy section.")
+        return MatchResult(
+            type="soft", lines_automaton=CopyAutomaton(), end=l.n_consumed
+        )
 
 
 class CopyAutomaton(LinesAutomaton):
@@ -69,24 +46,22 @@ class CopyAutomaton(LinesAutomaton):
         """Simple lines of the form 'source -> target'.
         Optionally quote the files to escape exotic chars, with python string syntax.
         """
-        if s := find_python_string(line):
-            src, rest = s
-            rest = rest.lstrip()
-            if not rest.startswith(self.arrow):
-                raise LineFeedError(
-                    f"Could not find arrow ({self.arrow}) in Copy line."
-                )
-            rest = rest.removeprefix(self.arrow)
-            tgt = second_filename(rest)
-        else:
-            try:
-                src, rest = line.split(self.arrow, 1)
-            except ValueError:
-                raise LineFeedError(
-                    f"Could not find arrow ({self.arrow}) in Copy line."
-                )
-            src = src.strip()
-            tgt = second_filename(rest)
+        l = Lexer(line).lstrip()
+        # Dismiss empty/comment lines.
+        if not l.input or l.match("#"):
+            return
+
+        n = l.n_consumed
+        if (r := l.read_string_or_raw_until(self.arrow)) is None:
+            l.error(f"Could not find arrow ({self.arrow}) in Copy line.")
+        src, raw = r
+        if raw and not src:
+            l.error("Could not find source filename in Copy line.", pos=n)
+        _, tgt, raw = l.read_string_or_raw_until_either(["#", EOI])
+        if raw and not tgt:
+            l.error("Could not find destination filename in Copy line.")
+        # Ignore anything after the comment sign.
+
         self.sources.append(src)
         self.targets.append(tgt)
 

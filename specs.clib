@@ -1,5 +1,5 @@
 copy: # Comment.
     a -> b # File a becomes b.
-    common_filename -> or with white spaces
+    common_filename -> or raw 'string"
     """quote string to resist #-attacks or \" / -> confusions""" -> unquoted # comment
     or else -> r'quote the \'second\' -> string' # (that's raw, right?)

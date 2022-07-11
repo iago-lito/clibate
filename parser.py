@@ -1,4 +1,5 @@
-from exceptions import ParseError, LineFeedError
+from exceptions import ParseError
+from lexer import Lexer, EOI
 
 
 class Parser(object):
@@ -29,6 +30,26 @@ class Parser(object):
             res += f" in {self.filename}"
         return res
 
+    def consume(self, n_consumed):
+        """Update self.input and calculate new linenum/colnum based on remaining input
+        and number of chars consumed.
+        """
+        consumed, remaining = self.input[:n_consumed], self.input[n_consumed:]
+        newlines = consumed.count("\n")
+        self.linenum += newlines
+        if newlines:
+            self.colnum = len(consumed) - consumed.rfind("\n")
+        else:
+            self.colnum += len(consumed)
+        self.input = remaining
+
+    def reraise(self, parse_error):
+        """Consume input until error, append position information
+        then forward the error up.
+        """
+        self.consume(parse_error.n_consumed)
+        raise ParseError(parse_error.message + f" ({self.position})") from parse_error
+
     def find_matching_reader(self) -> "MatchResult" or None:
         """Consume necessary input for one reader to match at current position."""
 
@@ -37,8 +58,11 @@ class Parser(object):
         # Error out if several readers match: ambiguity.
         matches = []  # [(match_result, reader)]
         for reader in self.readers:
-            if m := reader.match(input):
-                matches.append((m, reader))
+            try:
+                if m := reader.match(input):
+                    matches.append((m, reader))
+            except ParseError as e:
+                self.reraise(e)
         if len(matches) > 1:
             readers = [type(r).__name__ for _, r in matches]
             if len(readers) == 2:
@@ -57,12 +81,7 @@ class Parser(object):
         [(match, reader)] = matches
 
         # Consume utilized input (updating position).
-        used, remaining = input[: match.end], input[match.end :]
-        newlines = used.count("\n")
-        self.linenum += newlines
-        if newlines:
-            self.colnum = len(used.rsplit("\n", 1)[1]) + 1
-        self.input = remaining
+        self.consume(match.end)
 
         return match
 
@@ -80,6 +99,17 @@ class Parser(object):
                 match = self.find_matching_reader()
 
             if not match:
+                l = Lexer(self.input)
+                if (s := l.find_either(["#", "\n", EOI])) is not None:
+                    # It's okay that we have not matched on an empty line
+                    # or a pure comment. Consume and move on.
+                    if s == '#':
+                        l.read_until_either(['\n', EOI])
+                    self.consume(l.n_consumed)
+                    if not self.input:
+                        break
+                    matching_started = False
+                    continue
                 raise ParseError(f"No readers matching input ({self.position}).")
 
             if match.type == "hard":
@@ -105,11 +135,8 @@ class Parser(object):
                     line, remaining = self.input.split("\n", 1)
                     try:
                         automaton.feed(line)
-                    except LineFeedError as e:
-                        raise ParseError(
-                            "Automaton failed on the following line:\n"
-                            f"--> {line}\n({self.position})"
-                        ) from e
+                    except ParseError as e:
+                        self.reraise(e)
                     self.input = remaining
                     self.linenum += 1
                     self.colnum = 1

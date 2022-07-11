@@ -9,9 +9,11 @@ class SourceError(Exception):
 
 class ParseError(Exception):
     "Error during parsing of the tests specification file."
-    pass
 
-
-class LineFeedError(Exception):
-    "Error during line processing with a soft reader."
-    pass
+    def __init__(self, message, n_consumed=0):
+        """Create with an error message, and the number of characters consumed
+        when the error happened.
+        """
+        self.n_consumed = n_consumed
+        self.message = message
+        super().__init__(message)
