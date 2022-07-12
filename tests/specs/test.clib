@@ -1,9 +1,12 @@
 # A basic tests specification file to toy around with the framework.
 # Toying around with the 'awk' command.
 
+# Define the command to be run.
 command: cat input_file | awk -f main.awk
-copy: dummy_data -> input_file
 
+# Populate test folder with data from the input folder..
+copy: dummy_data -> input_file
+# .. or with original data.
 file (main.awk):: EOF
   {
     sum += $2
@@ -17,3 +20,9 @@ file (main.awk):: EOF
     print chain ": " sum
   }
 EOF
+
+# TODO: establish expectations regarding the command output
+# and/or state of the test folder after the command.
+
+# Execute the command.
+RUN

@@ -3,6 +3,7 @@ from exceptions import TestSetError
 from pathlib import Path
 import os
 import shutil as shu
+import subprocess as sp
 
 
 class TestSet(object):
@@ -40,6 +41,11 @@ class TestSet(object):
 
         self.command = None
         self.checkers = set()
+
+        # Whenever the command is run, record output for the checkers to work on.
+        self.stdout = None  # raw bytes
+        self.stderr = None  # raw bytes
+        self.exitcode = None  # integer
 
     def prepare(self):
         """Pick a name for the test folder and send prepare commands."""
@@ -89,3 +95,13 @@ class TestSet(object):
     def update_command(self, command):
         """Replace/update the shell command to run for the tests."""
         self.command = command
+
+    def run_command(self):
+        """Run the command and record all output."""
+        if not self.command:
+            raise TestSetError(f"No command to be run.")
+        process = sp.Popen(self.command, shell=True, stdout=sp.PIPE, stderr=sp.PIPE)
+        process.wait()
+        self.exitcode = process.returncode
+        self.stdout = process.stdout.read()
+        self.stderr = process.stderr.read()

@@ -4,6 +4,7 @@ types_accesses = """
     command.Command
     copy.Copy
     file.File
+    run.Run
 """
 
 default_readers = []
