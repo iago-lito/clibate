@@ -1,4 +1,4 @@
-from exceptions import ParseError
+from exceptions import ParseError, NoSectionMatch
 from lexer import Lexer, EOI
 
 
@@ -61,6 +61,8 @@ class Parser(object):
             try:
                 if m := reader.match(input):
                     matches.append((m, reader))
+            except NoSectionMatch:
+                pass
             except ParseError as e:
                 self.reraise(e)
         if len(matches) > 1:
@@ -103,8 +105,8 @@ class Parser(object):
                 if (s := l.find_either(["#", "\n", EOI])) is not None:
                     # It's okay that we have not matched on an empty line
                     # or a pure comment. Consume and move on.
-                    if s == '#':
-                        l.read_until_either(['\n', EOI])
+                    if s == "#":
+                        l.read_until_either(["\n", EOI])
                     self.consume(l.n_consumed)
                     if not self.input:
                         break

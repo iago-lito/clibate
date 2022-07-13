@@ -1,4 +1,5 @@
-from exceptions import SourceError
+from exceptions import SourceError, NoSectionMatch
+from lexer import Lexer
 
 
 class Reader(object):
@@ -11,11 +12,54 @@ class Reader(object):
     "Soft" readers only indicate whether they match a start or not.
     When started, they are given the rest of the input line by line
     until another reader matches.
+
+    As the parent class of all readers,
+    Reader offers a Lexer-wrapping API for basic parsing of the input given in match.
+    So, although in principle every subtype may rewrite everything
+    and parse the spec file the way it wants,
+    there are facilities to read clibate sections with a typical-look.
     """
 
     def match(self, input) -> "MatchResult" or None:
         """Check whether the input yields a start match."""
         raise NotImplementedError("Missing method 'match' for {type(self).__name__}.")
+
+    def section_name(self):
+        """Infer section name, assuming the reader's name is <SectionName>Reader."""
+        return type(self).__name__.removesuffix("Reader")
+
+    def define_lexer(self, input):
+        """Entry point into the Reader's API:
+        defines and attaches a Lexer instance to self,
+        so future calls don't need to pass it always as an argument.
+        """
+        self.lexer = Lexer(input)
+
+    def check_keyword(self):
+        """Check that the reader's `self.keyword` is starting the match,
+        Otherwise warn the calling parser with the correct exception.
+        """
+        if not self.lexer.match(self.keyword):
+            raise NoSectionMatch()
+
+    def introduce(self, input):
+        """Common entrypoint both spawning the lexer and checking section keyword."""
+        self.define_lexer(input)
+        self.check_keyword()
+
+    def check_colon(self):
+        """Check that the section is correctly introduced by a colon ':'."""
+        lex = self.lexer
+        if not lex.find(":"):
+            lex.error(f"Missing colon ':' to introduce {self.section_name()} section.")
+
+    def soft_match(self, automaton):
+        """Produce a correct soft matching result based on lexing done so far."""
+        return MatchResult(
+            type="soft",
+            lines_automaton=automaton,
+            end=self.lexer.n_consumed,
+        )
 
 
 class MatchResult(object):

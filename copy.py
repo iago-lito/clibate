@@ -23,14 +23,9 @@ class CopyReader(Reader):
     keyword = "copy"
 
     def match(self, input):
-        l = Lexer(input)
-        if not l.match(self.keyword):
-            return None
-        if not l.find(":"):
-            l.error("Missing colon to introduce Copy section.")
-        return MatchResult(
-            type="soft", lines_automaton=CopyAutomaton(), end=l.n_consumed
-        )
+        self.introduce(input)
+        self.check_colon()
+        return self.soft_match(CopyAutomaton())
 
 
 class CopyAutomaton(LinesAutomaton):

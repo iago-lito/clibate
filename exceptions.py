@@ -17,3 +17,8 @@ class ParseError(Exception):
         self.n_consumed = n_consumed
         self.message = message
         super().__init__(message)
+
+
+class NoSectionMatch(Exception):
+    "Raised to the parser by a reader that does not match given input."
+    pass
