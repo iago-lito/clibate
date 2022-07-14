@@ -7,6 +7,8 @@ from tempfile import TemporaryFile
 import os
 import shutil as shu
 import subprocess as sp
+import textwrap as tw
+
 
 class TestSet(object):
     """The set is responsible for running tests while holding a consistent state:
@@ -20,16 +22,19 @@ class TestSet(object):
     The test set API is presented to the actors so they can safely modify it.
     """
 
-    def __init__(self, input_folder, sandbox_folder, prepare=None):
+    def __init__(self, input_folder, sandbox_folder, id=None, prepare=None):
         """Temporary test folder will be created within the sandox folder,
         the sandbox folder will be created if non-existent.
         'prepare' is a sequence of commands to be run before after creating the test
         folder.
         """
 
+        # Uniquely identify the set to avoid test folders collisions within the sandbox.
+        self.id = id if id is not None else "set"
+
         self.input_folder = inp = Path(input_folder).resolve()
         self.sandbox_folder = sbx = Path(sandbox_folder).resolve()
-        self._prepare = prepare if prepare else []
+        self.prepare_commands = prepare if prepare else []
 
         if not inp.exists():
             raise TestSetError(f"Could not find input folder: {inp}.")
@@ -66,11 +71,14 @@ class TestSet(object):
     def prepare(self):
         """Pick a name for the test folder and send prepare commands."""
         i = 0
-        while (p := Path(self.sandbox_folder, f"test_{i}")).exists():
+        path = lambda i: Path(
+            self.sandbox_folder, "test_" + self.id + (f"-{i}" if i else "")
+        )
+        while (p := path(i)).exists():
             i += 1
         p.mkdir()
         self.test_folder = p.absolute()
-        for cmd in self._prepare:
+        for cmd in self.prepare_commands:
             print("$ " + cmd)
             if os.system(cmd):
                 raise TestSetError(f"Test preparation command failed.")
@@ -84,26 +92,59 @@ class TestSet(object):
             temp.close()
         self.backups.clear()
 
-    def change(self, object):
+    def execute(self, instruction):
         """Process action to modify environment before the next test."""
-        if isinstance(actor := object, Actor):
+        if isinstance(actor := instruction, Actor):
             actor.execute(self)
-        elif isinstance(checker := object, Checker):
+        elif isinstance(checker := instruction, Checker):
             self.add_checkers([checker])
         else:
-            raise SourceError(f"Invalid change object type: {type(object).__name__}.")
-
-    def is_input_file(self, filename) -> bool:
-        """Test whether the given file exists in the input folder."""
-        return Path(self.input_folder, filename).exists()
-
-    def check_input_file(self, filename):
-        """Raise if given file does not exist."""
-        if not self.is_input_file(filename):
-            raise TestSetError(
-                f"Could not find file {repr(filename)} "
-                f"in input folder {self.input_folder}."
+            raise SourceError(
+                f"Invalid change object type: {type(instruction).__name__}."
             )
+
+    def setup_and_run(self, instructions, report=True):
+        """Prepare, run given instructions, report then cleanup."""
+        exception = True
+        try:
+            self.prepare()
+            for inst in instructions:
+                self.execute(inst)
+            if report:
+                self.report()
+        except:
+            print(
+                f"Exception caught during run of test set {repr(self.id)}: "
+                "cleaning up..",
+                end="",
+            )
+            raise
+        else:
+            exception = False
+        finally:
+            self.cleanup()
+            if exception:
+                print(" done.")
+
+    for folder in ("sandbox", "input", "test"):
+        exec(
+            tw.dedent(
+                f'''
+    def is_{folder}_file(self, filename) -> bool:
+        """Test whether the given file exists in the {folder} folder."""
+        return Path(self.{folder}_folder, filename).exists()
+
+    def check_{folder}_file(self, filename):
+        """Raise if given file does not exist."""
+        if not self.is_{folder}_file(filename):
+            raise TestSetError(
+                f"Could not find file {{repr(filename)}} "
+                f"in {folder} folder {{self.{folder}_folder}}."
+            )
+    '''
+            )
+        )
+    del folder
 
     def copy_from_input(self, filename, destination_name):
         """Bring file from input to test folder, erasing existing ones."""

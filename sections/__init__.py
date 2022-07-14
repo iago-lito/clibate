@@ -1,21 +1,30 @@
 # Bundle here the implementation of various common sections when using clibate.
 
-types_accesses = """
+
+def default_readers():
+    """Construct a fresh sequence of pre-implemented readers."""
+    readers = []
+    for line in default_readers.types_accesses.split():
+        file, name = line.split(".")
+        exec(f"readers.append({name}Reader())")
+    return readers
+
+
+default_readers.types_accesses = "\n".join(
+    """
     check.Check
     command.Command
     copy.Copy
     exit_code.ExitCode
     file.File
+    include.Include
     run.Run
     success.Success
     test.Test
-"""
+""".strip().split()
+)
 
-default_readers = []
 
-for line in types_accesses.strip().split():
-    file, name = line.strip().split(".")
+for line in default_readers.types_accesses.split():
+    file, name = line.split(".")
     exec(f"from .{file} import {name}Reader")
-    exec(f"default_readers.append({name}Reader())")
-
-del types_accesses

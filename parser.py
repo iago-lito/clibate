@@ -1,14 +1,25 @@
 from exceptions import ParseError, NoSectionMatch
 from lexer import Lexer
+from sections import default_readers
+
+from pathlib import Path
 
 
 class ParseContext(object):
-    """Useful aggregate to pass parsing position around."""
+    """Useful aggregate to pass parsing position around,
+    but also more general context like original file,
+    the set of readers used to parse input (within the parser itself),
+    or the chain of included files leading to this being parsed.
+    """
 
-    def __init__(self, filename, linenum, colnum):
-        self.filename = filename
-        self.linenum = linenum
-        self.colnum = colnum
+    def __init__(self, parser, filename=None, file_path=None, include_chain=None):
+        self.parser = parser
+        self.filename = filename  # As entered by user at some point.
+        self.file_path = file_path  # Canonically resolved.
+        self.linenum = 1
+        self.colnum = 1
+        # [(included file (full path), including_position (entered name))]
+        self.include_chain = include_chain if include_chain is not None else []
 
     @property
     def position(self):
@@ -23,18 +34,14 @@ class Parser(object):
     And parse one string into a list of readers results.
     """
 
-    def __init__(self, specs, readers, filename=None):
-        """Initialize from a string and a set of readers."""
-
-        # Keep a copy of the whole specifications.
-        self.specs = specs  # (remains constant)
+    def __init__(self, readers):
         self.readers = readers
 
         # The parser is consumed when all input is consumed.
-        self.input = specs  # (consumed as parsing goes)
+        self.input = None  # (set before parsing, consumed as parsing goes)
 
         # Keep track of position within the file.
-        self.context = ParseContext(filename, 1, 1)
+        self.context = None  # (set before parsing, passed to readers)
 
     def consume(self, n_consumed):
         """Update self.input and calculate new linenum/colnum based on remaining input
@@ -95,10 +102,13 @@ class Parser(object):
 
         return match
 
-    def parse(self):
+    def parse(self, input, context):
         """Iteratively hand the input to readers
         so they consume it bit by bit.
         """
+
+        self.input = input
+        self.context = context
 
         # One iteration, one collected object.
         collect = []
@@ -167,3 +177,27 @@ class Parser(object):
 
         # All input has been parsed.
         return collect
+
+    @staticmethod
+    def parse_file(
+        filename, file_path=None, readers=None, include_chain=None
+    ) -> [object]:
+        """Construct a parser to read and parse given file,
+        producing a sequence of parsed objects resulting from the various readers.
+        """
+        # Construct parser.
+        if readers is None:
+            readers = default_readers()
+        parser = Parser(readers)
+
+        # Retrieve input, setup context.
+        if not file_path:
+            file_path = Path(filename).resolve()
+        with open(file_path, "r") as file:
+            input = file.read()
+        if include_chain is None:
+            include_chain = [(file_path, "<root>")]
+        context = ParseContext(parser, filename, file_path, include_chain)
+
+        # Do the job.
+        return parser.parse(input, context)

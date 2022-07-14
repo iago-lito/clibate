@@ -1,0 +1,3 @@
+# Use this specification file to introduce all other ones.
+
+include (basic_awk): Check basic behaviour of clibate with awk command.
