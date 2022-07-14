@@ -47,6 +47,8 @@ class TestSet(object):
         self.checkers = []
         # A "test" result is a name + all reports by current checkers.
         self.tests = []  # [(name, {checker: report (None on success)})]
+        # The test name is set in advance by actors.
+        self.test_name = "<UNNAMED TEST>"
 
         # Whenever the command is run, record output for the checkers to work on.
         self.stdout = None  # raw bytes
@@ -143,18 +145,21 @@ class TestSet(object):
             self.clear_checkers(expectations)
         self.checkers += checkers
 
-    def run_checks(self, name) -> bool:
-        """Run all checks and gather reports under the given name.
+    def run_checks(self) -> bool:
+        """Run all checks and gather reports under the current test name.
         Return False if some checks failed.
+        The test name is reset.
         """
         success = True
         reports = {}
+        name = self.test_name if self.test_name is not None else "UNNAMED TEST"
         for checker in self.checkers:
             r = checker.check(self.exitcode, self.stdout, self.stderr)
             if r is not None:
                 success = False
             reports[checker] = r
         self.tests.append((name, reports))
+        self.test_name = None
         return success
 
     def report(self):

@@ -8,6 +8,7 @@ types_accesses = """
     file.File
     run.Run
     success.Success
+    test.Test
 """
 
 default_readers = []

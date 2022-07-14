@@ -23,3 +23,9 @@ EOF
 
 Success: The first basic test is running okay.
     A-B-C: 26
+
+
+test: Modify the command.
+command: cat input_file | awk -f main.awk | sed 's/:/::/'
+Success:
+    A-B-C:: 26

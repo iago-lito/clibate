@@ -4,7 +4,7 @@ It sets up:
     - an expected 0 return code
     - an expected stdout
     - an expected empty stderr
-    - a name for the test
+    - a name for the test (optional)
 Then it:
     - runs the test command
     - checks the result
@@ -15,7 +15,7 @@ Also, the expected stdout is not checked exactly.
 It is only checked that the expected string can be found within stdout,
 irrespective of whitespace.
 
-    Success: Oneline name for the test.
+    Success: <Oneline name for the test.>
         this string must appear within stdout
 
 With no stdout lines provided, stdout is ignored
@@ -39,7 +39,9 @@ class Success(Actor):
         # Set up common checkers.
         ts.add_checkers([ExitCode(0), StdoutSubChecker(self.stdout), EmptyStderr()])
         # Display message before running the test.
-        message = self.name.rstrip(".")
+        if self.name:
+            ts.test_name = self.name
+        message = ts.test_name.rstrip(".")
         print(message + "..", end="", flush=True)
         ts.run_command()
         # Close message with test results.
@@ -47,7 +49,7 @@ class Success(Actor):
         red = "\x1b[31m"
         green = "\x1b[32m"
         reset = "\x1b[0m"
-        if ts.run_checks(self.name):
+        if ts.run_checks():
             print(f" {green}PASS{reset}")
         else:
             print(f" {red}FAIL{reset}")
@@ -61,7 +63,7 @@ class SuccessReader(Reader):
     def match(self, input):
         self.introduce(input)
         self.check_colon()
-        name = self.read_line(expect_data="test name")
+        name = l if (l := self.read_line()) else None
         return self.soft_match(SuccessAutomaton(name))
 
 
