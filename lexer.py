@@ -615,41 +615,147 @@ class Lexer(object):
             )
         return (stop, read, True) if expect_data is None else (stop, read)
 
-    def read_parenthesized(self) -> str:
-        """Read and consume raw or quoted string within parentheses.
+    def read_tuple(self, n=[]) -> str or (str,):
+        r"""Read and consume comma-separated raw or quoted strings within parentheses.
+        Compare number of results to expectations (n)
+        to raise appropriate error if needed.
+        n=[] means any number.
+        Python like unary tuples must end with a comma to not be unpacked.
         >>> l = Lexer(" (raw read) ")
-        >>> l.read_parenthesized(), l.n_consumed
+        >>> l.read_tuple(), l.n_consumed
         ('raw read', 11)
-        >>> Lexer(''' (don't bother with unmatched quotes) ''').read_parenthesized()
+        >>> Lexer(''' (don't bother with unmatched quotes) ''').read_tuple()
         "don't bother with unmatched quotes"
-        >>> Lexer(''' ("but don't neglect quoting (all) if it isn't unambiguous") ''').read_parenthesized()
+        >>> Lexer(''' ("but don't neglect quoting (all) if it isn't unambiguous") ''').read_tuple()
         "but don't neglect quoting (all) if it isn't unambiguous"
+
+        >>> Lexer(" (read, three, 'nice, (nice) values') ").read_tuple()
+        ('read', 'three', 'nice, (nice) values')
+        >>> Lexer(" (two with, closing comma, ) ").read_tuple()
+        ('two with', 'closing comma')
+        >>> Lexer(" (singleton tuple,) ").read_tuple()
+        ('singleton tuple',)
+        >>> (l:=Lexer(" (unpacked) ")).read_tuple(), l.n_consumed
+        ('unpacked', 11)
+        >>> (l:=Lexer(" () ")).read_tuple(), l.n_consumed # Empty tuple.
+        ((), 3)
+        >>> (l:=Lexer(" () ")).read_tuple(0), l.n_consumed # Empty may be expected.
+        ((), 3)
+        >>> (l:=Lexer(" ('') ")).read_tuple(), l.n_consumed # Explicit empty string.
+        ('', 5)
+        >>> (l:=Lexer(" ('',) ")).read_tuple(), l.n_consumed # Explicit empty string.
+        (('',), 6)
+        >>> (l:=Lexer(" ('', '') ")).read_tuple(), l.n_consumed # Explicit empty strings.
+        (('', ''), 9)
+        >>> (l:=Lexer(" (, '') ")).read_tuple(), l.n_consumed # Implicit empty string.
+        (('', ''), 7)
+        >>> (l:=Lexer(" (,) ")).read_tuple(), l.n_consumed # Implicit empty string.
+        (('',), 4)
+        >>> (l:=Lexer(" (,,) ")).read_tuple(), l.n_consumed # Implicit empty strings.
+        (('', ''), 5)
+        >>> (l:=Lexer(" (a,,) ")).read_tuple(), l.n_consumed # Implicit empty string.
+        (('a', ''), 6)
+
+        Auto-unpack if exactly 1 is expected.
+        >>> (l:=Lexer(" (a) ")).read_tuple(1), l.n_consumed
+        ('a', 4)
+        >>> (l:=Lexer(" (a,) ")).read_tuple(1), l.n_consumed
+        ('a', 5)
+        >>> (l:=Lexer(" (a,) ")).read_tuple([1, 2]), l.n_consumed # No unpack.
+        (('a',), 5)
+        >>> (l:=Lexer(" (a) ")).read_tuple([1, 2]), l.n_consumed # No unpack.
+        (('a',), 4)
+        >>> (l:=Lexer(" (a) ")).read_tuple([0, 1]), l.n_consumed # No unpack.
+        (('a',), 4)
+        >>> (l:=Lexer(" () ")).read_tuple([0, 1]), l.n_consumed # No unpack.
+        ((), 3)
 
         Check for parentheses closing and read consistency.
         >>> l = Lexer(" no opening) ")
-        >>> l.read_parenthesized()
+        >>> l.read_tuple()
         Traceback (most recent call last):
         exceptions.ParseError: Missing opening parenthesis.
         >>> l.n_consumed
-        1
+        0
         >>> l = Lexer(" (no closing ")
-        >>> l.read_parenthesized()
+        >>> l.read_tuple()
         Traceback (most recent call last):
-        exceptions.ParseError: Unmatched parenthesis.
+        exceptions.ParseError: Missing comma in tuple or unmatched parenthesis.
         >>> l.n_consumed
-        2
-        >>> l = Lexer(" (not 'all' quoted) ")
-        >>> l.read_parenthesized()
+        0
+        >>> l = Lexer(" (no, closing \n too late) ")
+        >>> l.read_tuple()
+        Traceback (most recent call last):
+        exceptions.ParseError: Missing comma in tuple or unmatched parenthesis.
+        >>> l.n_consumed
+        0
+        >>> l = Lexer(" (not, 'all' well-quoted) ")
+        >>> l.read_tuple()
         Traceback (most recent call last):
         exceptions.ParseError: ...
+        >>> l.n_consumed
+        0
+        >>> l = Lexer(" (wrong, number) ")
+        >>> l.read_tuple(3) # doctest: +NORMALIZE_WHITESPACE
+        Traceback (most recent call last):
+        exceptions.ParseError: Expected 3 values in tuple,
+                               found 2 instead: ('wrong', 'number').
+        >>> l.n_consumed
+        0
+        >>> l = Lexer(" (wrong, number) ")
+        >>> l.read_tuple([3, 4, 5]) # doctest: +NORMALIZE_WHITESPACE
+        Traceback (most recent call last):
+        exceptions.ParseError: Expected either 3, 4 or 5 values in tuple,
+                               found 2 instead: ('wrong', 'number').
+        >>> l.n_consumed
+        0
+        >>> l = Lexer(" (wrong, number) ")
+        >>> l.read_tuple([3, 4, 5]) # doctest: +NORMALIZE_WHITESPACE
+        Traceback (most recent call last):
+        exceptions.ParseError: Expected either 3, 4 or 5 values in tuple,
+                               found 2 instead: ('wrong', 'number').
+        >>> l.n_consumed
+        0
+        >>> l = Lexer(" (wrong, number) ")
+        >>> l.read_tuple([3, 1]) # doctest: +NORMALIZE_WHITESPACE
+        Traceback (most recent call last):
+        exceptions.ParseError: Expected either 3 or 1 value in tuple,
+                               found 2 instead: ('wrong', 'number').
+        >>> l.n_consumed
+        0
         """
-        if not self.find("("):
-            self.lstrip()
-            self.error("Missing opening parenthesis.")
-        if (read := self.read_string_or_raw_until(")")) is None:
-            self.error("Unmatched parenthesis.", 1)
-        read, _ = read
-        return read
+        if type(n) is not list:
+            n = [n]
+        lex = self.copy()
+        if not lex.find("("):
+            lex.lstrip()
+            lex.error("Missing opening parenthesis.")
+        stop = "("
+        reads = []
+        while stop != ")":
+            if (r := lex.read_string_or_raw_until_either([",", ")"])) is None:
+                lex.error("Missing comma in tuple or unmatched parenthesis.", 1)
+            stop, read, raw = r
+            reads.append(read)
+        if raw and not read:
+            # The last read was actually just a closing comma or empty tuple.
+            reads.pop(-1)
+        reads = tuple(reads)
+        if n and len(reads) not in n:
+            if len(n) == 1:
+                exp = str(n[0])
+            else:
+                exp = f"either {', '.join(str(n) for n in n[:-1])} or {n[-1]}"
+            s = "s" if n[-1] > 1 else ""
+            lex.error(
+                f"Expected {exp} value{s} in tuple, "
+                f"found {len(reads)} instead: {reads}."
+            )
+        self.become(lex)
+        if (len(reads) == 1) and (n == [1] or ((not (raw and not read)) and n == [])):
+            # Unpack singleton.
+            return reads[0]
+        return reads
 
     line_stops = ["\n", EOI]
 

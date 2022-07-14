@@ -30,7 +30,7 @@ class FileReader(Reader):
 
     def match(self, input, _):
         self.introduce(input)
-        filename = self.read_parenthesized()
+        filename = self.read_tuple(1)
         self.check_double_colon()
         content = self.read_heredoc_like("file")
         actor = File(filename, content)
