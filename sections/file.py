@@ -28,7 +28,7 @@ class FileReader(Reader):
 
     keyword = "file"
 
-    def match(self, input):
+    def match(self, input, _):
         self.introduce(input)
         filename = self.read_parenthesized()
         self.check_double_colon()

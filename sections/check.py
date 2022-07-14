@@ -9,20 +9,21 @@ from reader import Reader
 
 
 class Check(Actor):
-    def __init__(self, name):
+    def __init__(self, name, position):
         self.name = name
+        self.position = position
 
     def execute(self, ts):
         ts.test_name = self.name
-        ts.run_checks()
+        ts.run_checks(self.position)
 
 
 class CheckReader(Reader):
 
     keyword = "CHECK"
 
-    def match(self, input):
+    def match(self, input, context):
         self.introduce(input)
         self.check_colon()
         name = self.read_line(expect_data="test name")
-        return self.hard_match(Check(name))
+        return self.hard_match(Check(name, context.position))

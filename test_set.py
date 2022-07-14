@@ -8,7 +8,6 @@ import os
 import shutil as shu
 import subprocess as sp
 
-
 class TestSet(object):
     """The set is responsible for running tests while holding a consistent state:
         - One temporary folder to run the tests within.
@@ -45,8 +44,8 @@ class TestSet(object):
         self.command = None
 
         self.checkers = []
-        # A "test" result is a name + all reports by current checkers.
-        self.tests = []  # [(name, {checker: report (None on success)})]
+        # A "test" result is a name + position + all reports by current checkers.
+        self.tests = []  # [(name, position, {checker: report (None on success)})]
         # The test name is set in advance by actors.
         self.test_name = "<UNNAMED TEST>"
 
@@ -121,10 +120,10 @@ class TestSet(object):
         """Replace/update the shell command to run for the tests."""
         self.command = command
 
-    def run_command(self):
+    def run_command(self, position):
         """Run the command and record all output."""
         if not self.command:
-            raise TestSetError(f"No command to be run.")
+            raise TestSetError(f"No command to be run. ({position})")
         process = sp.Popen(self.command, shell=True, stdout=sp.PIPE, stderr=sp.PIPE)
         process.wait()
         self.exitcode = process.returncode
@@ -145,8 +144,9 @@ class TestSet(object):
             self.clear_checkers(expectations)
         self.checkers += checkers
 
-    def run_checks(self) -> bool:
-        """Run all checks and gather reports under the current test name.
+    def run_checks(self, position) -> bool:
+        """Run all checks and gather reports under the current test name,
+        and from the current context position.
         Return False if some checks failed.
         The test name is reset.
         """
@@ -158,7 +158,7 @@ class TestSet(object):
             if r is not None:
                 success = False
             reports[checker] = r
-        self.tests.append((name, reports))
+        self.tests.append((name, position, reports))
         self.test_name = None
         return success
 
@@ -177,13 +177,13 @@ class TestSet(object):
 
         # Gather only failed reports.
         failed = []
-        for name, reports in self.tests:
+        for name, position, reports in self.tests:
             failed_reports = {}
             for checker, rep in reports.items():
                 if rep is not None:
                     failed_reports[checker] = rep
             if failed_reports:
-                failed.append((name, failed_reports))
+                failed.append((name, position, failed_reports))
 
         n_total, n_failed = len(self.tests), len(failed)
         n_ok = n_total - n_failed
@@ -192,8 +192,8 @@ class TestSet(object):
                 f"\n{red}🗙{reset} {n_failed} test{plur(n_failed)} "
                 f"ha{plur(n_failed, 've', 's')} failed:\n"
             )
-            for name, reports in failed:
-                print(f"{blue}{name}{reset}")
+            for name, position, reports in failed:
+                print(f"{blue}{name}{reset} ({position})")
                 for report in reports.values():
                     print(report, end="\n\n")
             print(

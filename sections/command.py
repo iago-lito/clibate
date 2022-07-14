@@ -50,7 +50,7 @@ class CommandReader(Reader):
 
     keyword = "command"
 
-    def match(self, input):
+    def match(self, input, _):
         self.introduce(input)
         colon = self.check_colon_type()
         if colon == "::":
@@ -63,7 +63,7 @@ class CommandAutomaton(LinesAutomaton):
     def __init__(self):
         self.lines = []  # One entry per input line.
 
-    def feed(self, line):
+    def feed(self, line, _):
         # Ignore empty lines and plain comment lines.
         if Lexer(line).find("#"):
             return

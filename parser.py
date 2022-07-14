@@ -2,6 +2,22 @@ from exceptions import ParseError, NoSectionMatch
 from lexer import Lexer
 
 
+class ParseContext(object):
+    """Useful aggregate to pass parsing position around."""
+
+    def __init__(self, filename, linenum, colnum):
+        self.filename = filename
+        self.linenum = linenum
+        self.colnum = colnum
+
+    @property
+    def position(self):
+        "Construct a string identifying current position within the parsed string."
+        fn = self.filename if self.filename is not None else "<None>"
+        res = f"{fn}:{self.linenum}:{self.colnum}"
+        return res
+
+
 class Parser(object):
     """Responsible for coordinating all the read modules together.
     And parse one string into a list of readers results.
@@ -13,22 +29,12 @@ class Parser(object):
         # Keep a copy of the whole specifications.
         self.specs = specs  # (remains constant)
         self.readers = readers
-        self.filename = filename
 
         # The parser is consumed when all input is consumed.
         self.input = specs  # (consumed as parsing goes)
 
         # Keep track of position within the file.
-        self.linenum = 1
-        self.colnum = 1
-
-    @property
-    def position(self):
-        "Construct a string identifying current position within the parsed string."
-        res = f"line {self.linenum} column {self.colnum}"
-        if self.filename is not None:
-            res += f" in {self.filename}"
-        return res
+        self.context = ParseContext(filename, 1, 1)
 
     def consume(self, n_consumed):
         """Update self.input and calculate new linenum/colnum based on remaining input
@@ -36,11 +42,11 @@ class Parser(object):
         """
         consumed, remaining = self.input[:n_consumed], self.input[n_consumed:]
         newlines = consumed.count("\n")
-        self.linenum += newlines
+        self.context.linenum += newlines
         if newlines:
-            self.colnum = len(consumed) - consumed.rfind("\n")
+            self.context.colnum = len(consumed) - consumed.rfind("\n")
         else:
-            self.colnum += len(consumed)
+            self.context.colnum += len(consumed)
         self.input = remaining
 
     def reraise(self, parse_error):
@@ -48,7 +54,9 @@ class Parser(object):
         then forward the error up.
         """
         self.consume(parse_error.n_consumed)
-        raise ParseError(parse_error.message + f" ({self.position})") from parse_error
+        raise ParseError(
+            parse_error.message + f" ({self.context.position})"
+        ) from parse_error
 
     def find_matching_reader(self) -> "MatchResult" or None:
         """Consume necessary input for one reader to match at current position."""
@@ -59,7 +67,7 @@ class Parser(object):
         matches = []  # [(match_result, reader)]
         for reader in self.readers:
             try:
-                if m := reader.match(input):
+                if m := reader.match(input, self.context):
                     matches.append((m, reader))
             except NoSectionMatch:
                 pass
@@ -74,7 +82,7 @@ class Parser(object):
                     "all readers " + ", ".join(readers[:-1]) + " and " + readers[-1]
                 )
             raise ParseError(
-                f"Ambiguity in parsing: {readers} match at {self.position}."
+                f"Ambiguity in parsing: {readers} match at {self.context.position}."
             )
         # It may be that none matched.
         if len(matches) == 0:
@@ -110,7 +118,9 @@ class Parser(object):
                         break
                     matching_started = False
                     continue
-                raise ParseError(f"No readers matching input ({self.position}).")
+                raise ParseError(
+                    f"No readers matching input ({self.context.position})."
+                )
 
             if match.type == "hard":
                 # The reader has already produced a valid object.
@@ -133,18 +143,18 @@ class Parser(object):
                     match = None
                     break
                 # Save in case a parse error occurs during termination of current soft.
-                pos = self.position
+                pos = self.context.position
                 match = self.find_matching_reader()
                 if not match:
                     # Extract current line and process it.
                     line, remaining = self.input.split("\n", 1)
                     try:
-                        automaton.feed(line)
+                        automaton.feed(line, self.context)
                     except ParseError as e:
                         self.reraise(e)
                     self.input = remaining
-                    self.linenum += 1
-                    self.colnum = 1
+                    self.context.linenum += 1
+                    self.context.colnum = 1
                     continue
                 # In case of match, the automaton should be done.
                 try:

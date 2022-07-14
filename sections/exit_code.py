@@ -27,7 +27,7 @@ class ExitCodeReader(Reader):
 
     keyword = "EXITCODE"
 
-    def match(self, input):
+    def match(self, input, _):
         self.introduce(input)
         if not (code := self.read_split()):
             l.error("Unexpected end of file while reading expected exit code.")

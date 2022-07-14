@@ -36,7 +36,7 @@ class CopyReader(Reader):
 
     keyword = "copy"
 
-    def match(self, input):
+    def match(self, input, _):
         self.introduce(input)
         self.check_colon()
         return self.soft_match(CopyAutomaton())
@@ -51,7 +51,7 @@ class CopyAutomaton(LinesAutomaton):
         self.sources = []
         self.targets = []
 
-    def feed(self, line):
+    def feed(self, line, _):
         """Simple lines of the form 'source -> target' or 'filename fn name'.
         Optionally quote the files to escape exotic chars, with python string syntax.
         """

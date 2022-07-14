@@ -20,7 +20,7 @@ class TestReader(Reader):
 
     keyword = "test"
 
-    def match(self, input):
+    def match(self, input, _):
         self.introduce(input)
         self.check_colon()
         name = self.read_line(expect_data="test name")

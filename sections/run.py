@@ -13,14 +13,17 @@ from reader import Reader
 
 
 class Run(Actor):
+    def __init__(self, position):
+        self.position = position
+
     def execute(self, ts):
-        ts.run_command()
+        ts.run_command(self.position)
 
 
 class RunReader(Reader):
 
     keyword = "RUN"
 
-    def match(self, input):
+    def match(self, input, context):
         self.introduce(input)
-        return self.hard_match(Run())
+        return self.hard_match(Run(context.position))

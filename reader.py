@@ -24,7 +24,7 @@ class Reader(object):
     there are facilities to read clibate sections with a typical-look.
     """
 
-    def match(self, input) -> "MatchResult" or None:
+    def match(self, input, context) -> "MatchResult" or None:
         """Check whether the input yields a start match."""
         raise NotImplementedError("Missing method 'match' for {type(self).__name__}.")
 
