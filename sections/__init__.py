@@ -25,6 +25,7 @@ default_readers.types_accesses = tw.dedent(
     check.Check
     command.Command
     copy.Copy
+    edit.Edit
     exit_code.ExitCode
     expect.Expect [(True,), (False,)]
     file.File

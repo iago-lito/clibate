@@ -1,0 +1,71 @@
+# Check edit PREFIX commands,
+# and more generally the options of single match lines
+# like PREFIX/UNPREF/REMOVE
+# on a dummy abstract file.
+
+file (abstract):: EOF
+   :a
+    :b
+     :c
+    :a
+   :b   EOF # Keep trailing whitespace on the last line.
+
+command: cat abstract
+
+success:: Start with same file. EOE
+:a
+ :b
+  :c
+ :a
+:b   EOE
+
+test: Simple prefix, unpref, remove.
+edit (abstract):
+PREFIX (--)     :a # Insert extra prefix.
+PREFIX (1s:, --) a # Insert extra after existing prefix.
+UNPREF (:)       b # Remove prefix.
+REMOVE          :c # remove line.
+success:: EOE
+--:a
+ b
+ :--a
+:b   EOE
+
+test: Starred versions of PREFIX.
+edit (abstract):
+PREFIX* ALL (--)     :b # Exact prefix/indent.
+PREFIX* ALL (:, --)   a # Loose indent.
+success:: EOE
+:--a
+ :b
+  :c
+ :--a
+--:b   EOE
+
+test: Starred/unstarred versions of UNPREF.
+edit (abstract):
+UNPREF  ALL (:) a # Loose indent.
+UNPREF* ALL (:) b # Exact prefix/indent.
+success:: EOE
+a
+ :b
+  :c
+ a
+b   EOE
+
+test: Starred/unstarred versions of REMOVE with specified prefix.
+edit (abstract):
+REMOVE  ALL (:) a # Exact prefix/indent.
+REMOVE* ALL (:) b # Loose indent.
+success:: <EOE>
+  :c
+ :a<EOE>
+
+test: Remove with exactly no ident.
+edit (abstract):
+REMOVE*    :a
+REMOVE  () :b # same
+success:: <EOE>
+ :b
+  :c
+ :a<EOE>

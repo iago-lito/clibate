@@ -1,3 +1,9 @@
 # Use this specification file to introduce all other ones.
 
 include (basic_awk): Check basic behaviour of clibate with awk command.
+
+# Basic tests with edit section.
+include (DIFF_awk): Check basic edit DIFF options on a small awk program.
+include (edit_INSERT): Check edit INSERT paired-lines options.
+include (edit_PREFIX): Check edit PREFIX/UNPREF/REMOVE single-lines options.
+include (edit_REPLACE): Check edit REPLACE options.

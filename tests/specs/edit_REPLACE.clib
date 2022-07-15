@@ -1,0 +1,144 @@
+# Check edit REPLACE commands, on a dummy file.
+
+file (haystack):: EOF
+    Find interesting things
+    to replace within this file.
+    Like the thing in the doc:
+        ♫ DOWN BY THE RIVERSIDE ♪
+    or the ambiguous "GOODBYE" phrase.
+EOF
+
+command: cat haystack
+
+success:: Start with the same file. EOR
+Find interesting things
+to replace within this file.
+Like the thing in the doc:
+    ♫ DOWN BY THE RIVERSIDE ♪
+or the ambiguous "GOODBYE" phrase.
+EOR
+
+test: Basic regex replacement.
+edit (haystack):
+    REPLACE thing BY song
+success:: EOR
+Find interesting songs
+to replace within this file.
+Like the thing in the doc:
+    ♫ DOWN BY THE RIVERSIDE ♪
+or the ambiguous "GOODBYE" phrase.
+EOR
+
+test: Replace all.
+edit (haystack):
+    REPLACE ALL thing BY song
+success:: EOR
+Find interesting songs
+to replace within this file.
+Like the song in the doc:
+    ♫ DOWN BY THE RIVERSIDE ♪
+or the ambiguous "GOODBYE" phrase.
+EOR
+
+test: Replace all with regex constructs.
+edit (haystack):
+    REPLACE ALL \bthing\b BY song
+success:: EOR
+Find interesting things
+to replace within this file.
+Like the song in the doc:
+    ♫ DOWN BY THE RIVERSIDE ♪
+or the ambiguous "GOODBYE" phrase.
+EOR
+
+test: Replace all with regex constructs.
+edit (haystack):
+    REPLACE ALL \bthing\b BY song
+success:: EOR
+Find interesting things
+to replace within this file.
+Like the song in the doc:
+    ♫ DOWN BY THE RIVERSIDE ♪
+or the ambiguous "GOODBYE" phrase.
+EOR
+
+test: Non-words 'BY's are unambiguous.
+edit (haystack):
+    REPLACE GOODBYE BY SO LONG
+success:: EOR
+Find interesting things
+to replace within this file.
+Like the thing in the doc:
+    ♫ DOWN BY THE RIVERSIDE ♪
+or the ambiguous "SO LONG" phrase.
+EOR
+
+test: Ambiguous patterns can be quoted.
+edit (haystack):
+    REPLACE GOODBYE BY 'GOOD BY ME'
+success:: EOR
+Find interesting things
+to replace within this file.
+Like the thing in the doc:
+    ♫ DOWN BY THE RIVERSIDE ♪
+or the ambiguous "GOOD BY ME" phrase.
+EOR
+
+test: Quote also escapes comment signs.
+edit (haystack):
+    REPLACE GOODBYE BY "# <3 BYEBYE <3 #"
+success:: EOR
+Find interesting things
+to replace within this file.
+Like the thing in the doc:
+    ♫ DOWN BY THE RIVERSIDE ♪
+or the ambiguous "# <3 BYEBYE <3 #" phrase.
+EOR
+
+test: Split over two lines.
+edit (haystack):
+    REPLACE GOODBYE
+    BY      "# <3 BYEBYE <3 #"
+success:: EOR
+Find interesting things
+to replace within this file.
+Like the thing in the doc:
+    ♫ DOWN BY THE RIVERSIDE ♪
+or the ambiguous "# <3 BYEBYE <3 #" phrase.
+EOR
+
+test: Patterns matches file over multiple lines.
+edit (haystack):
+    REPLACE (?s)( ).*(\.) # Nothing really interesting in the end.
+    BY      \1nothing\2
+success:: EOR
+Find nothing.
+EOR
+
+test: Split match pattern over multiple lines.
+edit (haystack):
+    REPLACE ALL \bth[a-z]+
+            /   ' ([a-z]+)'
+            BY  DA \1\1
+success:: EOR
+Find interesting things
+to replace within DA filefile.
+Like DA thingthing in DA docdoc:
+    ♫ DOWN BY THE RIVERSIDE ♪
+or DA ambiguousambiguous "GOODBYE" phrase.
+EOR
+
+test: Split replace pattern over multiple lines.
+edit (haystack):
+    REPLACE ALL \bth[a-z]+
+            /   ' ([a-z]+)'
+            BY  'DA '
+            /   \1\1
+success:: EOR
+Find interesting things
+to replace within DA filefile.
+Like DA thingthing in DA docdoc:
+    ♫ DOWN BY THE RIVERSIDE ♪
+or DA ambiguousambiguous "GOODBYE" phrase.
+EOR
+

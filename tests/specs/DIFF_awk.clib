@@ -1,0 +1,83 @@
+# Test basic options of the DIFF edit instruction.
+# To illustrate one possible use of DIFF,
+# don't check result by just reading resulting files,
+# but infer the result of an awk program.
+
+command: cat input_file | awk -f main.awk
+copy: dummy_data -> input_file
+file (main.awk):: EOF
+  {
+    sum += $2
+    if (chain == "") {
+      chain = $1
+    } else {
+      # Same line different indentation.
+          chain = chain "-" $1
+      chain = chain "-" $1
+    }
+  }
+  END {
+    print chain ": " sum
+  }
+EOF
+
+success: Initial expected output.
+    A-B-B-C-C: 26
+
+test: First edit is temporary.
+edit (main.awk):
+    DIFF chain = $1
+    ~    chain = $1 $1 $1
+success:
+    AAA-B-B-C-C: 26
+
+test: Second edit is permanent, first edit has been rolled back.
+edit* (main.awk):
+    DIFF 'print chain ": " sum'
+    ~    'print chain ":: " sum'
+success:
+    A-B-B-C-C:: 26
+
+test: Third edit is temporary again, second edit is still there.
+edit (main.awk): # Only the first line is matched, irrespective of indentation.
+    DIFF 'chain = chain "-" $1'
+    ~    'chain = chain "+" $1'
+success:
+    A+B-B+C-C:: 26
+
+test: Match all similar lines irrespective of indentation.
+edit (main.awk):
+    DIFF ALL 'chain = chain "-" $1'
+    ~        'chain = chain "*" $1'
+success:
+    A*B*B*C*C:: 26
+
+test: Match only the first one with precise indentation.
+edit (main.awk):
+    DIFF (8) 'chain = chain "-" $1'
+    ~        'chain = chain "+" $1'
+success:
+    A+B-B+C-C:: 26
+
+test: Match only the second one with precise indentation.
+edit* (main.awk): # Permanently.
+    DIFF (4) 'chain = chain "-" $1'
+    ~        'chain = chain "+" $1'
+success:
+    A-B+B-C+C:: 26
+
+test: Replace with a commented line.
+edit (main.awk):
+    DIFF (4) 'chain = chain "+" $1'
+    ~    (#) 'chain = chain "+" $1'
+success:
+    A-B-C:: 26
+
+test: Revert last permanent edit and replace both lines with different indent.
+edit (main.awk):
+    DIFF 'chain = chain "+" $1' # (reverting)
+    ~    'chain = chain "-" $1'
+    DIFF ALL 'chain = chain "-" $1' # (commenting both)
+    ~    (#) 'chain = chain "+" $1'
+success:
+    A:: 26

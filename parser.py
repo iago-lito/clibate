@@ -40,6 +40,22 @@ class ParseContext(object):
         # [(included file (full path), including_position (entered name))]
         self.include_chain = include_chain if include_chain is not None else []
 
+    def copy(self):
+        """Stolen to Lexer, yet with more data to pass around.
+        Should be fixed with a better Context handling.
+        """
+        new = ParseContext(
+            self.input,
+            self.parser,
+            self.filename,
+            self.file_path,
+            None if self.include_chain is None else list(self.include_chain),
+        )
+        new.n_consumed = self.n_consumed
+        new.linenum = self.linenum
+        new.colnum = self.colnum
+        return new
+
     @property
     def position(self) -> str:
         "Construct a string identifying current position within the parsed string."

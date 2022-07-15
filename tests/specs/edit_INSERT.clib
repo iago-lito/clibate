@@ -1,0 +1,284 @@
+# Check edit INSERT commands,
+# and more generally the options of paired match lines
+# like INSERT (ABOVE|BELOW) an DIFF
+# on a dummy abstract file.
+
+file (abstract):: EOF
+   :a
+    :b
+     :c
+    :a
+   :b   EOF # Keep trailing whitespace on the last line.
+
+command: cat abstract
+
+success:: Start with same file. EOE
+:a
+ :b
+  :c
+ :a
+:b   EOE
+
+test: Insert below first match, preserving indent.
+edit (abstract):
+INSERT BELOW :a
+     +   X
+success:: EOE
+:a
+X
+ :b
+  :c
+ :a
+:b   EOE
+
+test: Insert below all matches, preserving indents.
+edit (abstract):
+INSERT ALL  :a
+         +  X
+success:: EOE
+:a
+X
+ :b
+  :c
+ :a
+ X
+:b   EOE
+
+test: All inserts with loose indent matched.
+edit (abstract):
+INSERT ALL     :a # Match any indent.
+       +       U  # Keep it.
+       + *     V  # Drop it.
+       +   (-) X  # Extend it.
+       + * (-) Y  # Change it.
+success:: EOE
+:a
+U
+V
+-X
+-Y
+ :b
+  :c
+ :a
+ U
+V
+ -X
+-Y
+:b   EOE
+
+test: All inserts with exact indent matched.
+edit (abstract):
+INSERT ALL (1) :a # Match exact indent.
+       +       U  # Keep it.
+       + *     V  # Drop it.
+       +   (-) X  # Change it.
+       + * (-) Y  # Extend it.
+success:: EOE
+:a
+ :b
+  :c
+ :a
+ U
+V
+-X
+ -Y
+:b   EOE
+
+test: All inserts with no indent matched.
+edit (abstract):
+INSERT ALL *   :a # Match without indent.
+       +       U  # Keep it.
+       +   (-) V  # Extend it.
+     # + *     X  # Clib not yet meta-tested to check expected errors..
+     # + * (-) Y  # .. but these two should be forbidden.
+success:: EOE
+:a
+U
+-V
+ :b
+  :c
+ :a
+:b   EOE
+
+test: All inserts with both prefix and indent matched.
+edit (abstract):
+INSERT ALL * (:) a # Match prefix + associated indent.
+       +         U # Keep it.
+       +   *     V # Drop it
+       +  **     W # Drop them.
+       +     (-) X # Change it.
+       +   * (-) Y # Extend it.
+       +  ** (-) Z # Change them.
+success:: EOE
+:a
+:U
+V
+W
+-X
+:-Y
+-Z
+ :b
+  :c
+ :a
+ :U
+ V
+W
+ -X
+ :-Y
+-Z
+:b   EOE
+
+test: Inserting on top of file.
+edit (abstract):
+INSERT ABOVE +  X
+               :a
+success:: EOE
+X
+:a
+ :b
+  :c
+ :a
+:b   EOE
+
+test: Insert above works like insert below.
+edit (abstract):
+INSERT +         U # Keep it.
+       +   *     V # Drop it
+       +  **     W # Drop them.
+       +     (-) X # Change it.
+       +   * (-) Y # Extend it.
+       +  ** (-) Z # Change them.
+       ALL * (:) a # Match prefix + associated indent.
+success:: EOE
+:U
+V
+W
+-X
+:-Y
+-Z
+:a
+ :b
+  :c
+ :U
+ V
+W
+ -X
+ :-Y
+-Z
+ :a
+:b   EOE
+
+test: Combine inserts.
+edit (abstract):
+INSERT ABOVE +  X
+               :a
+INSERT       +  Y # (not 'ABOVE' but same)
+           ALL :b
+INSERT     ALL :c # (not 'BELOW' but same)
+             + Z
+success:: EOE
+X
+:a
+ Y
+ :b
+  :c
+  Z
+ :a
+Y
+:b   EOE
+
+test: Insertions can be chained on the result of previous ones.
+edit (abstract):
+INSERT   :a
+       + X
+INSERT   X
+       + Y
+INSERT + Z
+         Y
+success:: EOE
+:a
+X
+Z
+Y
+ :b
+  :c
+ :a
+:b   EOE
+
+test: But inserters won't be trapped in a loop.
+edit (abstract):
+INSERT ALL  :a
+          + X
+INSERT    + :a
+       ALL  X
+success:: EOE
+:a
+:a
+X
+ :b
+  :c
+ :a
+ :a
+ X
+:b   EOE
+
+test: Match trailing space.
+edit (abstract):
+INSERT + X
+   ALL   :b      # Indifferent
+INSERT + Y
+   ALL   ":b   " # Exact non-empty.
+INSERT + Z
+   ALL   ":b" *  # Exact empty.
+success:: EOE
+:a
+ X
+ Z
+ :b
+  :c
+ :a
+X
+Y
+:b   EOE
+
+test: Insert with regex match/replace.
+edit (abstract):
+INSERT/ ALL (\s+:) a
+          + ()     X
+INSERT/ ALL (r'(\s*):') a
+          + ()     Y
+          + (\1-)  Z
+success:: EOE
+:a
+Y
+-Z
+ :b
+  :c
+ :a
+Y
+ -Z
+X
+:b   EOE
+
+test: Capture all line with the regex pattern.
+edit (abstract):
+INSERT/ ALL (r'(\s*):([ac])') # All the line is considered "the prefix".
+          + (\1)     X
+          + (\1-\2)  Y
+          + (\1-\2\2)         # All the replacement is considered "the line".
+success:: EOE
+:a
+X
+-aY
+-aa
+ :b
+  :c
+  X
+  -cY
+  -cc
+ :a
+ X
+ -aY
+ -aa
+:b   EOE
+
