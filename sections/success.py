@@ -38,7 +38,10 @@ class Success(Actor):
 
     def execute(self, ts):
         # Set up common checkers.
-        ts.add_checkers([ExitCode(0), StdoutSubChecker(self.stdout), EmptyStderr()])
+        p = self.position
+        ts.add_checkers(
+            [ExitCode(0, p), StdoutSubChecker(self.stdout, p), EmptyStderr(p)]
+        )
         # Display message before running the test.
         if self.name:
             ts.test_name = self.name

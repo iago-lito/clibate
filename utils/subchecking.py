@@ -14,8 +14,9 @@ class StdoutSubChecker(Checker):
 
     expecting_stdout = True
 
-    def __init__(self, needle):
+    def __init__(self, needle, position):
         self.needle = needle
+        self.position = position
 
     def check(self, _, stdout, __):
         stdout = stdout.decode("utf-8")
@@ -33,8 +34,9 @@ class StderrSubChecker(Checker):
 
     expecting_stderr = True
 
-    def __init__(self, needle):
+    def __init__(self, needle, position):
         self.needle = needle
+        self.position = position
 
     def check(self, _, __, stderr):
         stderr = stderr.decode("utf-8")

@@ -208,6 +208,7 @@ class TestSet(object):
 
         # Escape codes for coloring output.
         red = "\x1b[31m"
+        grey = "\x1b[30m"
         blue = "\x1b[34m"
         green = "\x1b[32m"
         yellow = "\x1b[33m"
@@ -234,8 +235,12 @@ class TestSet(object):
                 f"ha{plur(n_failed, 've', 's')} failed:\n"
             )
             for name, position, reports in failed:
+                # Elide checkers positions if they all are the same as the report.
+                elide = all(c.position == position for c in reports.keys())
                 print(f"{blue}{name}{reset} ({position})")
-                for report in reports.values():
+                for checker, report in reports.items():
+                    if not elide:
+                        print(f"{grey}<{checker.position}>{reset}")
                     print(report, end="\n\n")
             print(
                 f"{blue}{n_total}{reset} test{plur(n_total)} run: "

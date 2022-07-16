@@ -6,6 +6,11 @@ class Checker(object):
         - they expect something from stdout
         - they expect something from stderr
     This is helpful to avoid inserting inconsistent expectations into the TestSet.
+
+    To subclass:
+        - implement self.check()
+        - set up self.expecting_* flag(s)
+        - make sure "self.position" is available to produce useful failure reports.
     """
 
     _expectations = ("code", "stdout", "stderr")

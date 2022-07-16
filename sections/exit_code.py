@@ -14,8 +14,9 @@ class ExitCode(Checker):
 
     expecting_code = True
 
-    def __init__(self, code):
+    def __init__(self, code, position):
         self.code = code
+        self.position = position
 
     def check(self, code, _, __):
         if self.code == code:
@@ -27,7 +28,7 @@ class ExitCodeReader(Reader):
 
     keyword = "EXITCODE"
 
-    def match(self, input, _):
+    def match(self, input, context):
         self.introduce(input)
         if not (code := self.read_split()):
             l.error("Unexpected end of file while reading expected exit code.")
@@ -35,4 +36,4 @@ class ExitCodeReader(Reader):
             code = int(code)
         except ValueError:
             self.error(f"Expected exit code, found {repr(code)}", len(code))
-        return self.hard_match(ExitCode(code))
+        return self.hard_match(ExitCode(code, context.position))
