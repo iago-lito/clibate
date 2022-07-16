@@ -12,21 +12,59 @@ class ParseContext(object):
     or the chain of included files leading to this being parsed.
     """
 
-    def __init__(self, parser, filename=None, file_path=None, include_chain=None):
+    # TODO: The context flows from parsing to readers to actors/checkers to the test_set
+    # and eventually back to the parser when files are `include:`d from one another,
+    # but the flow is not fully exploited yet because readers and lines automata
+    # possibly spawn their own lexers, starting from 0, and because keeping a ref to the
+    # context for constructing a possible later message reference
+    # does not keep it from being consumed meanwhile.
+    # On the other hand, the context cannot be messed with because consuming it wrong
+    # invalidates all subsequent parsing.
+    # Maybe the parsing context could be more pervasive,
+    # yet more hidden/protected/documented,
+    # consumed only by the `Parser`, the parent class `Reader`,
+    # and by subclasses really knowing what they do.
+    # It could also be easier to spawn it and, for instance, passing a protected fork of
+    # it with only one line left to consume to the lines automata..
+
+    def __init__(
+        self, input, parser, filename=None, file_path=None, include_chain=None
+    ):
+        self.input = input
         self.parser = parser
         self.filename = filename  # As entered by user at some point.
         self.file_path = file_path  # Canonically resolved.
+        self.n_consumed = 0
         self.linenum = 1
         self.colnum = 1
         # [(included file (full path), including_position (entered name))]
         self.include_chain = include_chain if include_chain is not None else []
 
     @property
-    def position(self):
+    def position(self) -> str:
         "Construct a string identifying current position within the parsed string."
         fn = self.filename if self.filename is not None else "<None>"
         res = f"{fn}:{self.linenum}:{self.colnum}"
         return res
+
+    @property
+    def consumed(self):
+        """True if there is no input left."""
+        return not self.input
+
+    def consume(self, n_consumed):
+        """Update self.input and calculate new linenum/colnum based on remaining input
+        and number of chars consumed.
+        """
+        consumed, remaining = self.input[:n_consumed], self.input[n_consumed:]
+        self.n_consumed += n_consumed
+        newlines = consumed.count("\n")
+        self.linenum += newlines
+        if newlines:
+            self.colnum = len(consumed) - consumed.rfind("\n")
+        else:
+            self.colnum += len(consumed)
+        self.input = remaining
 
 
 class Parser(object):
@@ -37,30 +75,15 @@ class Parser(object):
     def __init__(self, readers):
         self.readers = readers
 
-        # The parser is consumed when all input is consumed.
-        self.input = None  # (set before parsing, consumed as parsing goes)
-
         # Keep track of position within the file.
+        # The parser is consumed when all input in context is consumed.
         self.context = None  # (set before parsing, passed to readers)
-
-    def consume(self, n_consumed):
-        """Update self.input and calculate new linenum/colnum based on remaining input
-        and number of chars consumed.
-        """
-        consumed, remaining = self.input[:n_consumed], self.input[n_consumed:]
-        newlines = consumed.count("\n")
-        self.context.linenum += newlines
-        if newlines:
-            self.context.colnum = len(consumed) - consumed.rfind("\n")
-        else:
-            self.context.colnum += len(consumed)
-        self.input = remaining
 
     def reraise(self, parse_error):
         """Consume input until error, append position information
         then forward the error up.
         """
-        self.consume(parse_error.n_consumed)
+        self.context.consume(parse_error.n_consumed)
         raise ParseError(
             parse_error.message + f" ({self.context.position})"
         ) from parse_error
@@ -68,13 +91,13 @@ class Parser(object):
     def find_matching_reader(self) -> "MatchResult" or None:
         """Consume necessary input for one reader to match at current position."""
 
-        input = self.input
+        context = self.context
 
         # Error out if several readers match: ambiguity.
         matches = []  # [(match_result, reader)]
         for reader in self.readers:
             try:
-                if m := reader.match(input, self.context):
+                if m := reader.match(context.input, self.context):
                     matches.append((m, reader))
             except NoSectionMatch:
                 pass
@@ -98,16 +121,15 @@ class Parser(object):
         [(match, reader)] = matches
 
         # Consume utilized input (updating position).
-        self.consume(match.end)
+        context.consume(match.end)
 
         return match
 
-    def parse(self, input, context):
+    def parse(self, context):
         """Iteratively hand the input to readers
         so they consume it bit by bit.
         """
 
-        self.input = input
         self.context = context
 
         # One iteration, one collected object.
@@ -119,12 +141,12 @@ class Parser(object):
                 match = self.find_matching_reader()
 
             if not match:
-                l = Lexer(self.input)
+                l = Lexer(context.input)
                 if l.find_empty_line():
                     # It's okay that we have not matched on an empty line
                     # or a pure comment. Consume and move on.
-                    self.consume(l.n_consumed)
-                    if not self.input:
+                    context.consume(l.n_consumed)
+                    if context.consumed:
                         break
                     matching_started = False
                     continue
@@ -135,8 +157,7 @@ class Parser(object):
             if match.type == "hard":
                 # The reader has already produced a valid object.
                 collect.append(match.parsed)
-                if not self.input:
-                    # Consumed!
+                if context.consumed:
                     break
                 match = None
                 continue
@@ -145,7 +166,7 @@ class Parser(object):
             # that we need to feed with lines until another reader matches.
             automaton = match.lines_automaton
             while True:
-                if not self.input:
+                if context.consumed:
                     try:
                         collect.append(automaton.terminate())
                     except ParseError as e:
@@ -157,14 +178,12 @@ class Parser(object):
                 match = self.find_matching_reader()
                 if not match:
                     # Extract current line and process it.
-                    line, remaining = self.input.split("\n", 1)
+                    line, remaining = context.input.split("\n", 1)
                     try:
                         automaton.feed(line, self.context)
                     except ParseError as e:
                         self.reraise(e)
-                    self.input = remaining
-                    self.context.linenum += 1
-                    self.context.colnum = 1
+                    context.consume(len(line) + 1)
                     continue
                 # In case of match, the automaton should be done.
                 try:
@@ -172,7 +191,7 @@ class Parser(object):
                 except ParseError as e:
                     raise ParseError(e.message + f" ({pos})") from e
                 break
-            if not match and not self.input:
+            if not match and context.consumed:
                 break
 
         # All input has been parsed.
@@ -197,7 +216,7 @@ class Parser(object):
             input = file.read()
         if include_chain is None:
             include_chain = [(file_path, "<root>")]
-        context = ParseContext(parser, filename, file_path, include_chain)
+        context = ParseContext(input, parser, filename, file_path, include_chain)
 
         # Do the job.
-        return parser.parse(input, context)
+        return parser.parse(context)
