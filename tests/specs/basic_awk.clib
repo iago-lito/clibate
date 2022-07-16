@@ -21,11 +21,15 @@ file (main.awk):: EOF
   }
 EOF
 
-Success: The first basic test is running okay.
+success: The first basic test is running okay.
     A-B-C: 26
 
 
 test: Modify the command.
 command: cat input_file | awk -f main.awk | sed 's/:/::/'
-Success:
-    A-B-C:: 26
+success: A-B-C:: 26
+
+test: Break the command.
+command: cat input_file | awk -f not-a-program
+failure (2):
+    awk: fatal :

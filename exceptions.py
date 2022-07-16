@@ -28,3 +28,34 @@ class TestSetError(Exception):
     "Error with organisation of the runs (folders structure, shell command..)"
     __test__ = False  # Avoid being collected by Pytest.
     pass
+
+
+def delineate_string(s, repeat=2) -> str:
+    """Find unambiguous markers to delimitate exact contours of a string.
+    Useful to produce reports.
+
+    >>> delineate_string("ah", 1)
+    '<ah>'
+    >>> delineate_string("ah", 2)
+    '<<ah>>'
+    >>> delineate_string("<ah>", 2)
+    '[[<ah>]]'
+    >>> delineate_string("<[ah>]", 1)
+    '{<[ah>]}'
+    >>> delineate_string("<[ah>]", 2)
+    '{{<[ah>]}}'
+    >>> delineate_string("<[a}}h>]", 1)
+    '{{{<[a}}h>]}}}'
+    """
+    # Find a pair of opening/closing marks that do not start or end the input.
+    o, c = [
+        (o, c) for o, c in "<> [] {}".split() if not (s.startswith(o) or s.endswith(c))
+    ][0]
+    # Repeat twice to make it clear.
+    (oo, cc) = (repeat * i for i in (o, c))
+    # And once more for everytime it appears in the input.
+    while oo in s or cc in s:
+        oo += o
+        cc += c
+    # Well done.
+    return oo + s + cc
