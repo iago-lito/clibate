@@ -22,6 +22,8 @@ class TestSet(object):
     The test set API is presented to the actors so they can safely modify it.
     """
 
+    __test__ = False  # Avoid being collected by Pytest.
+
     def __init__(self, input_folder, sandbox_folder, id=None, prepare=None):
         """Temporary test folder will be created within the sandox folder,
         the sandbox folder will be created if non-existent.
