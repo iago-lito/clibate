@@ -7,6 +7,7 @@ from test_set import TestSet
 
 from pathlib import Path
 import pytest
+import os
 
 if __name__ == "__main__":
 
@@ -17,8 +18,24 @@ if __name__ == "__main__":
     if code := pytest.main(["--doctest-modules", "-x", str(dir)]):
         exit(code)
 
-    ts = TestSet(Path(dir, "tests/input"), Path(dir, "tests"))
+    # Extract the example clib file in the README
+    # and temporarily add it to the tests folder.
+    with open(Path(dir, "README.md"), "r") as file:
+        file = file.read()
+    _, clib = file.split("```clib", 1)
+    clib, _ = clib.split("```", 1)
+    clib_path = Path(dir, "tests/specs/basic_awk_from_README.clib").resolve()
+    with open(clib_path, "w") as file:
+        file.write(clib)
 
-    instructions = Parser.parse_file(Path(dir, "tests/specs/main.clib"))
-
-    ts.setup_and_run(instructions)
+    try:
+        ts = TestSet(Path(dir, "tests/input"), Path(dir, "tests"))
+        instructions = Parser.parse_file(Path(dir, "tests/specs/main.clib"))
+        ts.setup_and_run(instructions)
+    except:
+        print(
+            f"Expection caught while running tests, cleaning up {clib_path}..", end=""
+        )
+    finally:
+        os.remove(clib_path)
+        print(" done.")

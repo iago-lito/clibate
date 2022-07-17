@@ -1,6 +1,6 @@
 # Use this specification file to introduce all other ones.
 
-include (basic_awk): Check basic behaviour of clibate with awk command.
+include (basic_awk_from_README): Check basic behaviour of clibate with awk.
 
 # Basic tests with edit section.
 include (DIFF_awk): Check basic edit DIFF options on a small awk program.
