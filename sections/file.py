@@ -11,27 +11,20 @@
 
 """
 
-from actor import Actor
 from reader import Reader
+from test_runner import RunnerWrapperActor
 
 
-class File(Actor):
-    def __init__(self, name, content):
-        self.name = name
-        self.content = content
-
-    def execute(self, ts):
-        ts.create_file(self.name, self.content)
+File = RunnerWrapperActor("create_file", "File")
 
 
 class FileReader(Reader):
 
     keyword = "file"
 
-    def match(self, input, _):
-        self.introduce(input)
+    def section_match(self, lexer):
+        self.introduce(lexer)
         filename = self.read_tuple(1)
         self.check_double_colon()
         content = self.read_heredoc_like("file")
-        actor = File(filename, content)
-        return self.hard_match(actor)
+        return File(self.keyword_context, filename, content)

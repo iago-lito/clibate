@@ -33,42 +33,38 @@ To overcome this, use heredoc-like markers instead, which makes the match "hard"
 
 """
 
-from actor import Actor
-from lexer import Lexer
 from reader import Reader, LinesAutomaton
+from test_runner import RunnerWrapperActor
 
 
-class Command(Actor):
-    def __init__(self, command):
-        self.command = command
-
-    def execute(self, ts):
-        ts.update_command(self.command)
+Command = RunnerWrapperActor("update_command", "Command")
 
 
 class CommandReader(Reader):
 
     keyword = "command"
 
-    def match(self, input, _):
-        self.introduce(input)
+    def section_match(self, lexer):
+        self.introduce(lexer)
         colon = self.check_colon_type()
+        cx = self.keyword_context
         if colon == "::":
             cmd = self.read_heredoc_like("command")
-            return self.hard_match(Command(cmd))
-        return self.soft_match(CommandAutomaton())
+            return Command(cx, cmd)
+        return CommandAutomaton(cx)
 
 
 class CommandAutomaton(LinesAutomaton):
-    def __init__(self):
+    def __init__(self, context):
+        self.context = context
         self.lines = []  # One entry per input line.
 
-    def feed(self, line, _):
-        # Ignore empty lines and plain comment lines.
-        if Lexer(line).find("#"):
+    def feed(self, lex):
+        # Ignore empty lines and plain comment lines,
+        # but keep the rest verbatim so eg. `echo 'ah'` needs no quoting.
+        if lex.find("#"):
             return
-        if s := line.strip():
-            self.lines.append(s)
+        self.lines.append(lex.consume().strip())
 
     def terminate(self):
-        return Command(" ".join(self.lines))
+        return Command(self.context, " ".join(self.lines))

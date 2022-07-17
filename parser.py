@@ -1,86 +1,9 @@
+from context import ParseContext, ContextLexer, EOI
 from exceptions import ParseError, NoSectionMatch
-from lexer import Lexer
+from reader import LinesAutomaton
 from sections import default_readers
 
 from pathlib import Path
-
-
-class ParseContext(object):
-    """Useful aggregate to pass parsing position around,
-    but also more general context like original file,
-    the set of readers used to parse input (within the parser itself),
-    or the chain of included files leading to this being parsed.
-    """
-
-    # TODO: The context flows from parsing to readers to actors/checkers to the test_set
-    # and eventually back to the parser when files are `include:`d from one another,
-    # but the flow is not fully exploited yet because readers and lines automata
-    # possibly spawn their own lexers, starting from 0, and because keeping a ref to the
-    # context for constructing a possible later message reference
-    # does not keep it from being consumed meanwhile.
-    # On the other hand, the context cannot be messed with because consuming it wrong
-    # invalidates all subsequent parsing.
-    # Maybe the parsing context could be more pervasive,
-    # yet more hidden/protected/documented,
-    # consumed only by the `Parser`, the parent class `Reader`,
-    # and by subclasses really knowing what they do.
-    # It could also be easier to spawn it and, for instance, passing a protected fork of
-    # it with only one line left to consume to the lines automata..
-
-    def __init__(
-        self, input, parser, filename=None, file_path=None, include_chain=None
-    ):
-        self.input = input
-        self.parser = parser
-        self.filename = filename  # As entered by user at some point.
-        self.file_path = file_path  # Canonically resolved.
-        self.n_consumed = 0
-        self.linenum = 1
-        self.colnum = 1
-        # [(included file (full path), including_position (entered name))]
-        self.include_chain = include_chain if include_chain is not None else []
-
-    def copy(self):
-        """Stolen to Lexer, yet with more data to pass around.
-        Should be fixed with a better Context handling.
-        """
-        new = ParseContext(
-            self.input,
-            self.parser,
-            self.filename,
-            self.file_path,
-            None if self.include_chain is None else list(self.include_chain),
-        )
-        new.n_consumed = self.n_consumed
-        new.linenum = self.linenum
-        new.colnum = self.colnum
-        return new
-
-    @property
-    def position(self) -> str:
-        "Construct a string identifying current position within the parsed string."
-        fn = self.filename if self.filename is not None else "<None>"
-        res = f"{fn}:{self.linenum}:{self.colnum}"
-        return res
-
-    @property
-    def consumed(self):
-        """True if there is no input left."""
-        return not self.input
-
-    def consume(self, n_consumed):
-        """Update self.input and calculate new linenum/colnum based on remaining input
-        and number of chars consumed.
-        """
-        consumed, remaining = self.input[:n_consumed], self.input[n_consumed:]
-        self.n_consumed += n_consumed
-        newlines = consumed.count("\n")
-        self.linenum += newlines
-        if newlines:
-            self.colnum = len(consumed) - consumed.rfind("\n")
-        else:
-            self.colnum += len(consumed)
-        self.input = remaining
 
 
 class Parser(object):
@@ -88,65 +11,46 @@ class Parser(object):
     And parse one string into a list of readers results.
     """
 
-    def __init__(self, readers):
-        self.readers = readers
+    def __init__(self, readers=None):
+        self.readers = readers if readers else default_readers()
 
-        # Keep track of position within the file.
-        # The parser is consumed when all input in context is consumed.
-        self.context = None  # (set before parsing, passed to readers)
-
-    def reraise(self, parse_error):
-        """Consume input until error, append position information
-        then forward the error up.
+    def find_matching_reader(self, lexer) -> "MatchResult" or None:
+        """Consume necessary input
+        for (exactly) one reader to match at current position.
         """
-        self.context.consume(parse_error.n_consumed)
-        raise ParseError(
-            parse_error.message + f" ({self.context.position})"
-        ) from parse_error
-
-    def find_matching_reader(self) -> "MatchResult" or None:
-        """Consume necessary input for one reader to match at current position."""
-
-        context = self.context
 
         # Error out if several readers match: ambiguity.
-        matches = []  # [(match_result, reader)]
+        matches = []  # [(parsed_result, reader)]
         for reader in self.readers:
+            # Spawn a safe version of the lexer for the readers to toy with it..
+            lexcopy = lexer.copy()
             try:
-                if m := reader.match(context.input, self.context):
-                    matches.append((m, reader))
+                if m := reader.section_match(lexcopy):
+                    matches.append((m, reader, lexcopy))
             except NoSectionMatch:
                 pass
-            except ParseError as e:
-                self.reraise(e)
         if len(matches) > 1:
-            readers = [type(r).__name__ for _, r in matches]
+            readers = [type(r).__name__ for _, r, _ in matches]
             if len(readers) == 2:
                 readers = "both readers " + " and ".join(readers)
             else:
                 readers = (
                     "all readers " + ", ".join(readers[:-1]) + " and " + readers[-1]
                 )
-            raise ParseError(
-                f"Ambiguity in parsing: {readers} match at {self.context.position}."
-            )
+            raise ParseError(f"Ambiguity: {readers} match.", lexer.context)
+
         # It may be that none matched.
         if len(matches) == 0:
             return None
 
-        [(match, reader)] = matches
-
-        # Consume utilized input (updating position).
-        context.consume(match.end)
+        # Commit to the lexer winning this match.
+        [(match, reader, winlexer)] = matches
+        lexer.become(winlexer)
 
         return match
 
-    def parse(self, context):
-        """Iteratively hand the input to readers
-        so they consume it bit by bit.
-        """
-
-        self.context = context
+    def parse(self, lexer):
+        """Iteratively hand the lexer to readers so they consume it bit by bit."""
 
         # One iteration, one collected object.
         collect = []
@@ -154,85 +58,70 @@ class Parser(object):
         while True:
 
             if not match:
-                match = self.find_matching_reader()
+                match = self.find_matching_reader(lexer)
 
             if not match:
-                l = Lexer(context.input)
-                if l.find_empty_line():
+
+                if lexer.find_empty_line():
                     # It's okay that we have not matched on an empty line
                     # or a pure comment. Consume and move on.
-                    context.consume(l.n_consumed)
-                    if context.consumed:
+                    if lexer.consumed:
                         break
                     matching_started = False
                     continue
-                raise ParseError(
-                    f"No readers matching input ({self.context.position})."
-                )
+                raise ParseError("No readers matching input.", lexer.context)
 
-            if match.type == "hard":
+            if not isinstance(match, LinesAutomaton):
                 # The reader has already produced a valid object.
-                collect.append(match.parsed)
-                if context.consumed:
+                collect.append(match)
+                if lexer.consumed:
                     break
                 match = None
                 continue
 
             # Otherwise, it has returned an automaton
             # that we need to feed with lines until another reader matches.
-            automaton = match.lines_automaton
+            automaton = match
             while True:
-                if context.consumed:
-                    try:
-                        collect.append(automaton.terminate())
-                    except ParseError as e:
-                        self.reraise(e)
+                if lexer.consumed:
+                    collect.append(automaton.terminate())
                     match = None
                     break
-                # Save in case a parse error occurs during termination of current soft.
-                pos = self.context.position
-                match = self.find_matching_reader()
+                match = self.find_matching_reader(lexer)
                 if not match:
-                    # Extract current line and process it.
-                    line, remaining = context.input.split("\n", 1)
-                    try:
-                        automaton.feed(line, self.context)
-                    except ParseError as e:
-                        self.reraise(e)
-                    context.consume(len(line) + 1)
+                    # Extract only one line to feed the automaton with.
+                    # Hand a lexer whose input is only the line.
+                    lexcopy = lexer.copy()
+                    _, line = lexer.read_until_either(["\n", EOI])
+                    lexcopy._lexer.input = line  # Drop anything after the line for it.
+                    automaton.feed(lexcopy)
                     continue
                 # In case of match, the automaton should be done.
-                try:
-                    collect.append(automaton.terminate())
-                except ParseError as e:
-                    raise ParseError(e.message + f" ({pos})") from e
+                collect.append(automaton.terminate())
                 break
-            if not match and context.consumed:
+            if not match and lexer.consumed:
                 break
 
         # All input has been parsed.
         return collect
 
-    @staticmethod
-    def parse_file(
-        filename, file_path=None, readers=None, include_chain=None
-    ) -> [object]:
-        """Construct a parser to read and parse given file,
+    def parse_file(self, filename, path=None, _includer_context=None) -> [object]:
+        """Construct a parser to interpret the given file,
         producing a sequence of parsed objects resulting from the various readers.
         """
-        # Construct parser.
-        if readers is None:
-            readers = default_readers()
-        parser = Parser(readers)
 
-        # Retrieve input, setup context.
-        if not file_path:
-            file_path = Path(filename).resolve()
-        with open(file_path, "r") as file:
+        # Construct parsing context.
+        context = ParseContext(
+            filename,
+            filepath=path if path else Path(filename).resolve(),
+            readers=tuple(self.readers),
+            includer=_includer_context,
+        )
+
+        # Read the file.
+        with open(context.filepath, "r") as file:
             input = file.read()
-        if include_chain is None:
-            include_chain = [(file_path, "<root>")]
-        context = ParseContext(input, parser, filename, file_path, include_chain)
 
-        # Do the job.
-        return parser.parse(context)
+        # Spin a lexer and do the job.
+        lexer = ContextLexer(input, context)
+        return self.parse(lexer)

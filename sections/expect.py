@@ -16,7 +16,7 @@ Then they both:
     - run the test command
     - check the result
     - restore all saved files from backups, consuming backups.
-    - produce a log message before the actual TestSet.report is invoked
+    - produce a log message before the actual TestRunner.report is invoked
 
 For example:
 
@@ -70,14 +70,14 @@ from reader import Reader, LinesAutomaton
 
 
 class Expect(Actor):
-    def __init__(self, name, success, position, output_checker, exit_code):
+    def __init__(self, name, success, context, output_checker, exit_code):
         self.name = name
         self.success = success
-        self.position = position
+        self.context = context
         self.output_checker = output_checker
         self.exit_code = exit_code
 
-    def execute(self, ts):
+    def execute(self, rn):
         # Setup checkers.
         checkers = []
 
@@ -85,42 +85,24 @@ class Expect(Actor):
             checkers.append(self.output_checker)
         else:
             # Remove if no particular expectation is set.
-            ts.clear_checkers(["stdout" if self.success else "stderr"])
+            rn.clear_checkers(["stdout" if self.success else "stderr"])
 
         # '*' code yields an actor to erase checkers, not an actual checker.
         if isinstance(self.exit_code, Actor):
-            self.exit_code.execute(ts)
+            self.exit_code.execute(rn)
         else:
             checkers.append(self.exit_code)
 
         if self.success:
             # Expect nothing on stderr.
-            checkers.append(EmptyOutput("stderr", self.position))
+            checkers.append(EmptyOutput("stderr", self.context))
         else:
             # Ignore stdout.
-            ts.clear_checkers(["stdout"])
+            rn.clear_checkers(["stdout"])
 
-        ts.add_checkers(checkers)
-
-        # Display message before running the test.
-        if self.name:
-            ts.test_name = self.name
-        else:
-            self.name = ts.test_name
-        message = ts.test_name.rstrip(".")
-        print(message + "..", end="", flush=True)
-        ts.run_command(self.position)
-
-        # Close message with test results.
-        # Reports can still be displayed by the TestSet later.
-        red = "\x1b[31m"
-        green = "\x1b[32m"
-        reset = "\x1b[0m"
-        if ts.run_checks(self.position):
-            print(f" {green}PASS{reset}")
-        else:
-            print(f" {red}FAIL{reset}")
-        ts.restore_all_files(keep_backup=False)
+        rn.add_checkers(checkers)
+        rn.run_test(self.context, self.name)
+        rn.restore_all_files(keep_backup=False)
 
 
 class ExpectReader(Reader):
@@ -132,32 +114,32 @@ class ExpectReader(Reader):
         self.failure = not success  # Just to ease reading
         self.keyword = self.keywords[self.failure]
 
-    def match(self, input, context):
-        self.introduce(input)
-        pos = context.position
+    def section_match(self, lex):
+        self.introduce(lex)
 
         # Retrieve exitcode.
         # Both sections accept it, but they don't default to the same.
-        lex = self.lexer
-        n = lex.n_consumed
+        context = self.lstrip().context
         try:
-            code, n = self.read_tuple(1), lex.n_consumed
+            code = self.read_tuple(1)
         except ParseError:
             if self.success:
                 code = 0
             else:
                 code = "+"
-        exit_code = ExitCode(code, context.position, lex, lex.n_consumed - n)
+        exit_code = ExitCode(code, context)
 
         # Understand global line type.
         c = self.check_colon_type()
+
+        context = self.lstrip().context
         name, star, raw = self.read_name_and_star()
 
         channel = ["stdout", "stderr"][self.failure]
         if c == "::" and star:
             # Exactly no output is expected.
             self.check_empty_line()
-            checker = EmptyOutput(channel, pos)
+            checker = EmptyOutput(channel, context)
 
         elif c == "::" and not star:
             # Expect exact output.
@@ -173,7 +155,7 @@ class ExpectReader(Reader):
                 output = self.read_heredoc_like(name=channel, EOR=eoo)
             else:
                 output = self.read_heredoc_like(name=channel)
-            checker = ExactOutput(channel, output, pos)
+            checker = ExactOutput(output, channel, context)
 
         elif c == ":" and star:
             # Expect nothing particular from the output.
@@ -181,9 +163,11 @@ class ExpectReader(Reader):
             checker = None
 
         elif c == ":" and not star:
-            return self.soft_match(ExpectAutomaton(name, self.success, pos, exit_code))
+            # Soft match.
+            return ExpectAutomaton(name, self.success, self.keyword_context, exit_code)
 
-        return self.hard_match(Expect(name, self.success, pos, checker, exit_code))
+        # Hard match otherwise.
+        return Expect(name, self.success, self.keyword_context, checker, exit_code)
 
     def read_name_and_star(self) -> (str, bool, bool):
         """The section name may be followed by a star,
@@ -192,7 +176,7 @@ class ExpectReader(Reader):
         """
         name, raw = self.read_string_or_raw_line()
         if raw:
-            # Seek with a backtrac within the name.
+            # Seek with a backtrack within the name.
             star = False
             if name:
                 try:
@@ -215,28 +199,29 @@ class ExpectReader(Reader):
 class ExpectAutomaton(LinesAutomaton):
     """Wraps the OutputSubstringAutomaton and forwards feed to it."""
 
-    def __init__(self, name, success, position, exit_code):
+    def __init__(self, name, success, context, exit_code):
         self.name = name
-        self.position = position
+        self.context = context
         self.success = success
         self.channel = ["stderr", "stdout"][success]
         self.exit_code = exit_code
         self.n_lines = 0
-        self.aut = OutputSubstringAutomaton(self.channel, position)
+        self.aut = OutputSubstringAutomaton(self.channel, context)
 
-    def feed(self, line, context):
-        if Lexer(line).find_empty_line():
+    def feed(self, lex):
+        if lex.find_empty_line():
             return
         self.n_lines += 1
-        self.aut.feed(line, context)
+        self.aut.feed(lex)
 
     def terminate(self):
         if self.n_lines:
-            checker = self.aut.terminate()
             name = self.name
+            checker = self.aut.terminate()
         else:
             # Backtrack: the line looking like a raw 'name'
             # was actually expected output, and there is no name.
-            checker = OutputSubstring(self.channel, self.name, self.position)
             name = ""
-        return Expect(name, self.success, self.position, checker, self.exit_code)
+            needle = self.name
+            checker = OutputSubstring(needle, self.channel, self.context)
+        return Expect(name, self.success, self.context, checker, self.exit_code)

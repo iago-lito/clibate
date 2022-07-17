@@ -19,17 +19,17 @@ from reader import Reader
 
 
 class ClearExpectedExitCode(Actor):
-    def execute(_, ts):
-        ts.clear_checkers(["exitcode"])
+    def execute(_, rn):
+        rn.clear_checkers(["exitcode"])
 
 
 class ExitCodeChecker(Checker):
 
     expecting_code = True
 
-    def __init__(self, code, position):
+    def __init__(self, code, context):
         self.code = code
-        self.position = position
+        self.context = context
 
     def check(self, code, _, __):
 
@@ -44,29 +44,29 @@ class ExitCodeChecker(Checker):
         return f"Expected return code {self.code}, got {code} instead."
 
 
-def ExitCode(code, position, lexer=None, backtrack=0):
+def ExitCode(code, context):
     """Construct correct Checker or Actor depending on the code."""
     try:
         code = int(code)
     except ValueError:
         if code not in ("*", "+"):
-            message = f"Expected exit code, '+' or '*', found {repr(code)}"
-            if lexer:
-                lexer.error(message, backtrack)
-            else:
-                raise ParseError(message)
+            raise ParseError(
+                f"Expected exit code, '+' or '*', found {repr(code)}",
+                cx=context,
+            )
     if code == "*":
         return ClearExpectedExitCode()
     else:
-        return ExitCodeChecker(code, position)
+        return ExitCodeChecker(code, context)
 
 
 class ExitCodeReader(Reader):
 
     keyword = "EXITCODE"
 
-    def match(self, input, context):
-        self.introduce(input)
+    def section_match(self, lex):
+        self.introduce(lex)
+        cx = lex.lstrip().context
         if not (code := self.read_split()):
-            l.error("Unexpected end of file while reading expected exit code.")
-        return self.hard_match(ExitCode(code, context.position, self.lexer, len(code)))
+            lex.error("Unexpected end of file while reading expected exit code.")
+        return ExitCode(code, cx)

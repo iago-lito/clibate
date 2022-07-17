@@ -11,11 +11,31 @@ Thorough documentation in `edit.md` file. Here is just a simple example:
 """
 
 from actor import Actor
-from exceptions import ParseError, TestSetError, SourceError, NoSectionMatch
+from exceptions import ParseError, TestRunError, SourceError, NoSectionMatch
 from lexer import Lexer, EOI
 from reader import Reader, LinesAutomaton
 
 import re
+
+
+def compile_or_error(pattern, context):
+    try:
+        return re.compile(pattern)
+    except Exception as e:
+        raise ParseError(
+            f"Could not compile regex pattern /{pattern}/:\n" + repr(e),
+            context,
+        ) from e
+
+
+def replace_or_error(compiled_pattern, input, replace, context, *args, **kwargs):
+    try:
+        return compiled_pattern.sub(replace, input, *args, **kwargs)
+    except Exception as e:
+        raise ParseError(
+            f"Could not use replace pattern /{replace}/:\n" + repr(e),
+            context,
+        ) from e
 
 
 class Replacer(object):
@@ -23,22 +43,25 @@ class Replacer(object):
     Modify file content according to the instruction.
     """
 
-    def __init__(self, pattern, replace, all, position):
-        self.pattern = re.compile(pattern)
-        self.position = position
+    def __init__(self, pattern, replace, all, contexts):
+        self.pattern_context, self.replace_context = contexts
+        self.pattern = compile_or_error(pattern, self.pattern_context)
         self.replace = replace
         self.all = all
 
     def execute(self, input):
         if not self.pattern.search(input):
-            raise TestSetError(
-                f"Could not match file with pattern /{self.pattern.pattern}/. "
-                f"({self.position})"
+            raise TestRunError(
+                f"Could not match file with pattern /{self.pattern.pattern}/.",
+                self.pattern_context,
             )
-        try:
-            return self.pattern.sub(self.replace, input, count=int(not self.all))
-        except Exception as e:
-            raise TestSetError(f"Invalid replace pattern ({self.position}).") from e
+        return replace_or_error(
+            self.pattern,
+            input,
+            self.replace,
+            self.replace_context,
+            count=int(not self.all),
+        )
 
 
 class LineProcesser(object):
@@ -62,24 +85,29 @@ class LineProcesser(object):
         A: str,
         T: bool,  # Should we match trailing space?
         all: bool,  # Continue after first match.
-        match_position: str,
+        match_context: "ParseContext",
         # Replacing info (multiple in case of INSERT).
         replace_patterns: [str or None],  # (eg. REMOVE asks for None)
         X_list: [str],
         B_list: [str],
-        replace_positions: [str],
+        replace_contexts: ["ParseContext"],
     ):
 
         if match_pattern not in self.match_patterns:
-            raise SourceError(f"Invalid match pattern: {repr(match_pattern)}.")
+            raise SourceError(
+                f"Invalid match pattern: {repr(match_pattern)}. "
+                f"<{match_context.position}>"
+            )
         self.match_pattern = match_pattern
         self.P = P
         self.A = A
         self.T = T
 
-        for rep in replace_patterns:
+        for rep, cx in zip(replace_patterns, replace_contexts):
             if rep is not None and rep not in self.replace_patterns:
-                raise SourceError(f"Invalid replace pattern: {repr(rep)}.")
+                raise SourceError(
+                    f"Invalid replace pattern: {repr(rep)}. <{cx.position}>"
+                )
         self.replace_patterns = replace_patterns
         self.X_list = X_list
         self.B_list = B_list
@@ -89,8 +117,8 @@ class LineProcesser(object):
             raise SourceError(f"Invalid operation: {repr(operation)}.")
         self.operation = operation
 
-        self.match_position = match_position
-        self.replace_positions = replace_positions
+        self.match_context = match_context
+        self.replace_contexts = replace_contexts
 
     def match(self, line):
         """Return None in case of nomatch,
@@ -145,8 +173,9 @@ class LineProcesser(object):
                     break
         if not matches:
             pref = f" with prefix {self.repr_P}" if self.P is not None else ""
-            raise TestSetError(
-                f"Could not match line {repr(self.A)}{pref}. ({self.match_position})"
+            raise TestRunError(
+                f"Could not match line {repr(self.A)}{pref}.",
+                self.match_context,
             )
         # Scroll all matches to modify the list of lines.
         offset = 0
@@ -165,6 +194,7 @@ class LineProcesser(object):
 class RegexInstruction(LineProcesser):
     r"""Instructions marked with a '/' mark: user wants explicit manual regexes.
 
+    >>> from context import MOCK_CONTEXT
     >>> d = RegexInstruction(
     ...         operation="below",
     ...         match_pattern="PA",
@@ -172,11 +202,11 @@ class RegexInstruction(LineProcesser):
     ...         A="target",
     ...         T=False,
     ...         all=True,
-    ...         match_position='<doctest>',
+    ...         match_context=MOCK_CONTEXT,
     ...         replace_patterns=["XB", "XB", None],
     ...         X_list=[r"\1--", r"--\1", None],
     ...         B_list=["transformed", "newtarget", None],
-    ...         replace_positions=3*['<doctest>'],
+    ...         replace_contexts=3*[MOCK_CONTEXT],
     ...     )
 
     Nomatch.
@@ -202,22 +232,24 @@ class RegexInstruction(LineProcesser):
         if not self.match_pattern == "PA":
             raise SourceError(
                 "Invalid match pattern for /-marked instruction: "
-                f"{repr(self.match_pattern)}. Expected 'PA'. ({self.match_position})"
+                f"{repr(self.match_pattern)}. Expected 'PA'. "
+                f"<{self.match_context.position}>"
             )
-        for rep, pos in zip(self.replace_patterns, self.replace_positions):
+        for rep, cx in zip(self.replace_patterns, self.replace_contexts):
             if rep not in (None, "XB", "XA"):
                 raise SourceError(
                     "Invalid replace pattern for /-marked instruction: "
-                    f"{repr(pat)}. Expected '', 'XA' or 'XB'. ({pos})"
+                    f"{repr(pat)}. Expected '', 'XA' or 'XB'. "
+                    f"<{cx.position}>"
                 )
-        self.P = re.compile(self.P)
+        self.P = compile_or_error(self.P, self.match_context)
 
     @property
     def repr_prefix_pattern(self):
         return f"/{self.P.pattern}/"
 
     def match(self, line):
-        P = re.compile(self.P)
+        P = self.P
         if m := P.match(line):
             header = m.group(0)
             A = line.removeprefix(header)
@@ -229,7 +261,12 @@ class RegexInstruction(LineProcesser):
 
     def construct(self, match):
         lines = []
-        for rep, X, B in zip(self.replace_patterns, self.X_list, self.B_list):
+        for rep, X, B, cx in zip(
+            self.replace_patterns,
+            self.X_list,
+            self.B_list,
+            self.replace_contexts,
+        ):
             if rep is None:
                 # This is a REMOVE/ instruction.
                 continue
@@ -242,7 +279,7 @@ class RegexInstruction(LineProcesser):
                         X = ""
                 else:
                     # This is PREFIX/ instruction.
-                    X = match.re.sub(X, match.group(0))
+                    X = replace_or_error(match.re, match.group(0), X, cx)
                 line = X + (B if rep.endswith("B") else self.A)
             lines.append(line)
         return lines
@@ -251,6 +288,7 @@ class RegexInstruction(LineProcesser):
 class AutomaticInstruction(LineProcesser):
     """Instruction not marked with a '/': user relies on clib edit section's language.
 
+    >>> from context import MOCK_CONTEXT
     >>> d = AutomaticInstruction(
     ...         operation='above',
     ...         match_pattern="IPA",
@@ -258,11 +296,11 @@ class AutomaticInstruction(LineProcesser):
     ...         A="target ",
     ...         T=True,
     ...         all=True,
-    ...         match_position="<doctest>",
+    ...         match_context=MOCK_CONTEXT,
     ...         replace_patterns=['IXB', 'IPXB'],
     ...         X_list=["##!", "-"],
     ...         B_list=["new", "fresh "],
-    ...         replace_positions=2*['<doctest>'],
+    ...         replace_contexts=2*[MOCK_CONTEXT],
     ...     )
 
     Nomatch.
@@ -324,16 +362,19 @@ class Edit(Actor):
     then sequentially run them to modify the file.
     """
 
-    def __init__(self, filename, persistent):
+    def __init__(self, filename, persistent, context):
         self.filename = filename
         self.persistent = persistent
-        self.substitutions = []
+        self.context = context
+        self.substitutions = []  # [(`.execute()`-able, context)]
 
-    def execute(self, ts):
+    def execute(self, rn):
         # Backup the file before reading it into memory.
-        ts.check_test_file(self.filename)
+        cx = self.context
+        rn.check_test_file(self.filename)
         if not self.persistent:
-            ts.backup_file(self.filename, override=False)
+            rn.backup_file(self.filename, override=False)
+        # TODO: wrap the following in try blocks.
         with open(self.filename, "r") as file:
             content = file.read()
         # Run all substitutions in order to the content.
@@ -348,38 +389,35 @@ class EditReader(Reader):
 
     keyword = "edit"
 
-    def match(self, input, context):
+    def section_match(self, lexer):
         """Process input line-by-line with an internal LinesAutomaton,
-        but overall result is a hard match.
+        although overall result is a hard match.
         In this fashion, unrecognized 'edit' instructions
         are forwarded to the parser for an attempt to be recognized
         by other readers.
         """
-        self.introduce(input)
+        self.introduce(lexer)
         persistent = self.find("*")
         filename = self.read_tuple(1)
         self.check_colon()
-        aut = EditAutomaton(filename, persistent)
-        # TODO: this should be made way easier with a proper ParseContext to pass around.
-        mock_context = context.copy()
-        mock_context.consume(self.lexer.n_consumed)
-        while self.lexer.input:
-            before_line = self.lexer.copy()
-            stop, line = self.lexer.read_until_either(["\n", EOI])
+        aut = EditAutomaton(filename, persistent, self.keyword_context)
+        while not self.lexer.consumed:
+            # One copy to use in case we need to backtrack and return to main Parser.
+            safe_lex = self.lexer.copy()
+            # One copy to hand out to our dedicated automaton.
+            line_lex = self.lexer.copy()
+            _, line = self.lexer.read_until_either(["\n", EOI])
+            line_lex._lexer.input = line  # Shorten to line only.
             try:
-                aut.feed(line, mock_context)
-            except ParseError as e:
-                # Fix position before forwarding to the parser.
-                e.n_consumed -= stop == "\n"
-                raise e from e
+                aut.feed(line_lex)
             except NoSectionMatch:
-                # Not sure this is edit section anymore,
-                # backtrack and leave the rest to the parser.
-                self.lexer.become(before_line)
+                # This line maybe wasn't ours:
+                # backtrack and refer to main Parser instead.
+                self.lexer.become(safe_lex)
                 break
-            mock_context.consume(len(line) + (stop == "\n"))
+            # Line correctly fed, keep going.
         parsed = aut.terminate()
-        return self.hard_match(parsed)
+        return parsed
 
 
 class EditAutomaton(LinesAutomaton):
@@ -396,11 +434,13 @@ class EditAutomaton(LinesAutomaton):
         self.actor = Edit(*args)
         # Current instruction is considered the automaton main state.
         self.state = None
-        # Use position to report parsing errors.
-        self.state_position = None
+        # Use a context local to every instruction to report parsing errors.
+        self.state_context = None
+        # And distinguish it from the actual line being read.
+        self.line_context = None
         # More refined state information (eg. DIFF prefixes, INSERT above or below)
         # are stored in this scratchspace aggregate.
-        self.data = lambda _: None  # (use like a dict but with `.` access, not `[""]`)
+        self.data = EditAutomatonData()
 
     def reset(self):
         """Clear state and expect a new instruction."""
@@ -468,23 +508,29 @@ class EditAutomaton(LinesAutomaton):
             B = [B]
         if hasattr(d, "replace_pattern"):
             if hasattr(d, "replace_patterns"):
-                raise SourceError(f"Confusion with this data names?")
+                raise SourceError(
+                    f"Confusion with this data names? "
+                    f"<{self.state_context.position}>"
+                )
             d.replace_patterns = [d.replace_pattern]
-        if hasattr(d, "replace_position"):
-            if hasattr(d, "replace_positions"):
-                raise SourceError(f"Confusion with this data names?")
-            d.replace_positions = [d.replace_position]
+        if hasattr(d, "replace_context"):
+            if hasattr(d, "replace_contexts"):
+                raise SourceError(
+                    f"Confusion with this data names?"
+                    f"<{self.state_context.position}>"
+                )
+            d.replace_contexts = [d.replace_context]
         # fmt: off
         instruction = d.InstructionType(
                 d.operation,
-                d.match_pattern, P, A, T, d.all, d.match_position,
-                d.replace_patterns, X, B, d.replace_positions,
+                d.match_pattern, P, A, T, d.all, d.match_context,
+                d.replace_patterns, X, B, d.replace_contexts,
                 )
         # fmt: on
         self.actor.substitutions.append(instruction)
         self.reset()
 
-    def new_paired_lines_instruction(self, operation):
+    def terminate_paired_lines_instruction(self, operation):
         """All necessary information for DIFF or INSERT has been found.
         Now interpret and collect.
         """
@@ -502,21 +548,22 @@ class EditAutomaton(LinesAutomaton):
             d.match_pattern = S + "PA"
 
             d.replace_patterns = []
-            for X, replace_star, pos_replace_star in zip(
-                d.X, d.replace_stars, d.pos_replace_stars
+            for X, replace_star, cx_replace_star in zip(
+                d.X, d.replace_stars, d.cx_replace_stars
             ):
 
                 if replace_star == "**" and (P is None or not d.match_star):
-                    raise ParseError(
+                    self.lexer.error(
                         "Double replace star mark '**' is meaningless "
-                        "without matching both variable indent (I) and a fixed prefix (P)."
-                        f" ({pos_replace_star})"
+                        "without matching both "
+                        "variable indent (I) and a fixed prefix (P).",
+                        context=cx_replace_star,
                     )
                 if P is None and d.match_star and replace_star:
-                    d.lex.error(
+                    self.lexer.error(
                         "Replace star mark '*' is redundant "
-                        "when matching with no indent (I) and no prefix (P)."
-                        f" ({pos_replace_star})"
+                        "when matching with no indent (I) and no prefix (P).",
+                        context=cx_replace_star,
                     )
                 # Now screen all valid cases.
                 if P is None and not d.match_star:
@@ -535,30 +582,30 @@ class EditAutomaton(LinesAutomaton):
 
         self.terminate_instruction()
 
-    def new_replace_instruction(self):
+    def terminate_replace_instruction(self):
         """We have collected all lines in REPLACE subsection,
         now interpret them and construct corresponding instruction.
         """
         d = self.data
         if not d.by:
-            d.lex.error(
-                "Cannot split REPLACE instruction over multiple lines "
-                f"without expliciting a BY section ({d.line_position})."
+            self.lexer.error(
+                "Missing 'BY' keyword or '/' line continuation symbol "
+                "for REPLACE instruction.",
+                context=self.line_context,
             )
         instruction = Replacer(
             "".join(pat for pat, _ in d.replace),
             "".join(rep for rep, _ in d.by),
             d.all,
-            d.match_position,
+            (d.match_context, d.replace_context),
         )
         self.actor.substitutions.append(instruction)
         self.reset()
 
-    def feed(self, line, context):
-        self.context = context  # To access from other methods.
+    def feed(self, lex):
+        self.lexer = lex
+        self.line_context = lex.context
         data = self.data
-        data.lex = lex = Lexer(line)
-        data.line_position = context.position
         if lex.find_empty_line():
             return
 
@@ -566,21 +613,18 @@ class EditAutomaton(LinesAutomaton):
 
             # Expect new instruction.
             keyword = None
+            self.state_context = lex.lstrip().context
             for ins in self.instructions:
-                if lex.find(ins):
+                if lex.match(ins):
                     keyword = ins
                     break
             if not keyword:
                 # That's a nomatch, leave it to the general parser.
                 raise NoSectionMatch()
             self.state = keyword
-            self.state_position = context.position
 
             # Single-line instructions look much alike, apart from the leading tuple.
             if keyword in ("PREFIX", "UNPREF", "REMOVE"):
-
-                data.match_position = data.line_position
-                data.replace_position = data.line_position
 
                 if keyword == "PREFIX":
                     data.operation = "inplace"
@@ -589,9 +633,9 @@ class EditAutomaton(LinesAutomaton):
                     PX = self.read_single_match_line(2)
                     if PX is None:
                         lex.error(
-                            "Missing parenthesized prefix pattern(s)"
-                            f"for PREFIX instruction.",
-                            pos=data.PX_position,
+                            "Missing parenthesized prefix pattern(s) "
+                            "for PREFIX instruction.",
+                            context=data.match_context,
                         )
                     if len(PX) == 1:
                         data.P, data.X = None, PX
@@ -614,9 +658,9 @@ class EditAutomaton(LinesAutomaton):
                     PX = self.read_single_match_line(1)
                     if PX is None:
                         lex.error(
-                            "Missing parenthesized prefix to remove"
-                            f"for UNPREF instruction.",
-                            pos=data.PX_position,
+                            "Missing parenthesized prefix pattern to remove "
+                            "for UNPREF instruction.",
+                            context=data.match_context,
                         )
                     (data.P,) = PX
                     data.X = None
@@ -690,11 +734,13 @@ class EditAutomaton(LinesAutomaton):
             # Like INSERT, REPLACE may span over multiple lines.
             if keyword == "REPLACE":
                 self.read_match_all()
+                data.match_context = lex.lstrip().context
                 # The first replace line parses specially
                 # because it may contain two quoted strings instead of one.
                 # Attempt to retrieve 'replace' and 'pattern' on this line alone.
                 if (pattern := lex.read_python_string()) is not None:
                     if lex.find("BY"):
+                        data.replace_context = lex.lstrip().context
                         replace = lex.read_string_or_raw_line(
                             expect_data="replace pattern"
                         )
@@ -710,16 +756,19 @@ class EditAutomaton(LinesAutomaton):
                         pattern, _ = r
                         if not (pattern := pattern.strip()):
                             lex.error(
-                                "Found no match pattern before 'BY' keyword.",
-                                len(replace) + len("BY"),
+                                f"Missing match pattern before 'BY' keyword.",
+                                context=data.match_context,
                             )
+                        data.replace_context = lex.lstrip().context
                         replace = lex.read_python_string()
                         if replace is None:
                             if lex.read_until(splitter) is not None:
                                 lex.error(
                                     "Ambiguous raw REPLACE line "
-                                    "with more than 1 occurence of the 'BY' keyword. "
-                                    "Consider quoting match and/or replace pattern."
+                                    f"with more than 1 occurence of the 'BY' keyword."
+                                    " Consider quoting match "
+                                    "and/or replace pattern(s).",
+                                    context=data.match_context,
                                 )
                             replace = lex.read_line(expect_data="replace pattern")
                         else:
@@ -730,12 +779,13 @@ class EditAutomaton(LinesAutomaton):
                         pattern = lex.read_line(expect_data="match pattern")
                         found_replace = False
 
-                data.match_position = data.line_position
-
                 if found_replace:
                     # We have everything to not need to get further.
                     instruction = Replacer(
-                        pattern, replace, data.all, data.match_position
+                        pattern,
+                        replace,
+                        data.all,
+                        (data.match_context, data.replace_context),
                     )
                     self.actor.substitutions.append(instruction)
                     self.reset()
@@ -746,7 +796,7 @@ class EditAutomaton(LinesAutomaton):
                 # Collect all lines in two separate 'REPLACE' and 'BY' sections
                 # then only wrap up to interpret them.
                 data.by_found = False  # Raise when 'BY' section is found.
-                data.replace = [(pattern, data.line_position)]
+                data.replace = [(pattern, data.match_context)]
                 data.by = []  # Empty yet.
                 return
 
@@ -757,12 +807,9 @@ class EditAutomaton(LinesAutomaton):
         if self.state == "DIFF":
             # Expect the second diff line.
             if not lex.find("~"):
-                lex.error(
-                    "Missing introducing tilde '~' "
-                    f"on second diff line. ({context.position})"
-                )
+                lex.error("Missing introducing tilde '~' on second diff line.")
             self.read_paired_replace_line()
-            self.new_paired_lines_instruction("inplace")
+            self.terminate_paired_lines_instruction("inplace")
             return
 
         if self.state == "INSERT":
@@ -774,48 +821,47 @@ class EditAutomaton(LinesAutomaton):
                 # Was there at least one?
                 if not hasattr(data, "X"):
                     lex.error(
-                        "No found no lines to INSERT BELOW (marked wit a '+' symbol)."
+                        "Found no lines to INSERT BELOW (marked with a '+' symbol)."
                     )
                 # When there are no more, try a different parsing instead.
-                self.new_paired_lines_instruction("below")
-                return self.feed(line, context)
+                self.terminate_paired_lines_instruction("below")
+                return self.feed(lex)
             else:
                 # Expect more replace lines or one terminating match line.
                 if lex.find("+"):
                     self.read_paired_replace_line()
                     return
                 self.read_paired_match_line()
-                # Was there at least one?
-                if not hasattr(data, "X"):
-                    lex.error(
-                        "No found no lines to INSERT ABOVE (marked wit a '+' symbol)."
-                    )
-                self.new_paired_lines_instruction("above")
+                # Caught while reading ABOVE, or considered BELOW.
+                assert hasattr(data, "X")
+                self.terminate_paired_lines_instruction("above")
                 return
 
         if self.state == "REPLACE":
             f = lex.find_either(["/", "BY"])
             if f is None:
                 # Done with this instruction, leave this line to the next sections.
-                self.new_replace_instruction()
+                self.terminate_replace_instruction()
                 raise NoSectionMatch()
             if f == "BY":
                 if data.by:
-                    line, pos = data.by[0]
+                    line, cx = data.by[0]
                     line = delineate_string(line)
                     lex.error(
                         "Cannot specify more than one BY line. "
-                        f"First BY line already found at {pos}: {line}. "
+                        f"First BY line already found at {cx.position}. "
                         f"To continuate BY lines, prefix them with a '/' mark instead."
                     )
                 # First BY line found.
+                data.replace_context = lex.lstrip().context
                 line, _ = lex.read_string_or_raw_line()
-                data.by.append((line, data.line_position))
+                data.by.append((line, self.line_context))
                 return
             if f == "/":
                 # Keep reading current subsection.
+                cx = lex.lstrip().context
                 line, _ = lex.read_string_or_raw_line()
-                record = (line, data.line_position)
+                record = (line, cx)
                 if not data.by:
                     data.replace.append(record)
                 else:
@@ -827,8 +873,9 @@ class EditAutomaton(LinesAutomaton):
     def read_slash(self):
         """Parse whether the slash mark '/' is given and remember position."""
         data = self.data
-        lex = data.lex
-        data.regexes, data.n_slash = lex.find("/"), lex.n_consumed
+        lex = self.lexer
+        data.cx_regexes = lex.lstrip().context
+        data.regexes = lex.match("/")
         if data.regexes:
             data.match_pattern = "PA"
             data.InstructionType = RegexInstruction
@@ -837,38 +884,35 @@ class EditAutomaton(LinesAutomaton):
 
     def read_match_star(self):
         """Parse whether match line is marked with a star '*'."""
-        data = self.data
-        lex = data.lex
-        data.match_star, data.n_match_star = lex.find("*"), lex.n_consumed
+        lex = self.lexer
+        d = self.data
+        d.match_star, d.cx_match_star = lex.find("*"), lex.context
 
     def read_match_all(self):
         """Parse whether all matching lines are required."""
-        data = self.data
-        lex = data.lex
-        data.all = lex.find("ALL")
+        self.data.all = self.lexer.find("ALL")
 
     def read_single_match_line(self, max_n_prefixes: int) -> None or (str,):
         """Common parsing for PREFIX/UNPREF/REMOVE instructions.
         Returns a tuple whose length is 1 <= len(tup) <= max_n_prefixes.
         """
+        lex = self.lexer
         data = self.data
-        lex = data.lex
         # Read various options.
         self.read_slash()
         if not data.regexes:
             self.read_match_star()
         self.read_match_all()
-        # Find optional prefix(es) patterns.
-        lex.lstrip()
-        data.PX_position = lex.n_consumed
+        # Find optional prefix(es) patterns P and X.
+        data.match_context = lex.lstrip().context
+        data.replace_context = data.match_context
         try:
             PX = lex.read_tuple(list(range(max_n_prefixes + 1)))
         except ParseError:
             if data.regexes:
                 lex.error(
-                    "Requested regex prefix with '/' mark "
-                    "but no parenthesized '(pattern)' was provided.",
-                    pos=data.n_slash,
+                    f"Requested regex prefix with '/' mark ({data.cx_regexes.position})"
+                    " but no parenthesized '(pattern)' was provided.",
                 )
             PX = None
         if not (data.regexes or PX is None):
@@ -876,64 +920,65 @@ class EditAutomaton(LinesAutomaton):
             if len(PX) == 0:
                 PX = ("",)
         # And mandatory line.
-        data.A, data.T = self.read_line_body()
+        data.A, tail, star = self.read_line_body()
+        data.T = tail or star
         return PX
 
     def read_paired_match_line(self) -> (str, bool):
         """Common parsing for DIFF/INSERT instructions."""
         data = self.data
-        lex = data.lex
-        data.match_position = data.line_position
+        lex = self.lexer
         # Read various options.
         self.read_match_all()
         self.read_match_star()
         # Find optional prefix.
-        try:
+        data.match_context = lex.lstrip().context
+        if lex.match("(", consume=False):
             P = lex.read_tuple(1)
-        except ParseError:
-            if data.regexes:
-                lex.error(
-                    "Requested regex prefix with '/' mark "
-                    "but no parenthesized '(pattern)' was provided.",
-                    pos=data.n_slash,
-                )
+        elif data.regexes:
+            lex.error(
+                f"Requested regex prefix with '/' mark ({data.cx_regexes.position})"
+                " but no parenthesized '(pattern)' was provided.",
+            )
+        else:
             P = None
         if not (data.regexes or P is None):
             P = self.parse_condensed_prefix(P)
         data.P = P
         # And mandatory line.
-        data.A, data.T = self.read_line_body()
+        data.A, tail, star = self.read_line_body()
+        data.T = tail or star
 
     def read_paired_replace_line(self) -> (str, bool):
         """Common parsing for DIFF/INSERT instructions."""
         data = self.data
-        lex = data.lex
-        replace_positions = data.line_position
+        lex = self.lexer
+        cx_replace_stars = lex.lstrip().context
         replace_stars = lex.find_either(["**", "*", ""])
-        pos_replace_stars = self.context.position
-        try:
+        replace_contexts = lex.lstrip().context
+        if lex.match("(", consume=False):
             X = lex.read_tuple([0, 1])
-        except ParseError:
-            if data.regexes:
-                lex.error(
-                    "Requested regex prefix with '/' mark "
-                    "but no parenthesized '(replacement)' pattern was provided.",
-                )
+        elif data.regexes:
+            lex.error(
+                f"Requested regex prefix with '/' mark ({data.cx_regexes.position})"
+                " but no parenthesized '(replacement)' pattern was provided.",
+            )
+        else:
             X = ""
         X = X[0] if X else ""
         if not data.regexes:
             X = self.parse_condensed_prefix(X)
-        B, star = self.read_line_body()
+        B, _, star = self.read_line_body()
         if star:
             lex.error("Unexpected star mark '*' found after replace line body.")
 
         # Append to lists or create then. (ask forgiveness not permission)
         for varname in (
             "replace_stars",
-            "pos_replace_stars",
+            "cx_replace_stars",
             "X",
             "B",
-            "replace_positions",
+            "replace_contexts",
         ):
             value = eval(varname)
             try:
@@ -941,36 +986,43 @@ class EditAutomaton(LinesAutomaton):
             except AttributeError:
                 setattr(data, varname, [value])
 
-    def read_line_body(self) -> (str, bool):
+    def read_line_body(self) -> (str, bool, bool):
         """Line body is either a raw read until EOL or comment sign, or a quoted string.
         When quoted, it may also be suffixed by a star mark '*'
         to request exact tail matching.
-        The star mark is implicit if the line is quoted *and* it ends with whitespace.
+        The exact matching is implicit if the line is quoted *and*
+        it ends with whitespace.
         """
-        lex = self.data.lex
+        lex = self.lexer
         if (body := lex.read_python_string()) is not None:
-            starred = lex.find("*") or body != body.rstrip()
+            starred = lex.find("*")
+            nonempty_tail = body != body.rstrip()
             lex.check_empty_line()
-            return body, starred
-        body, _ = lex.read_string_or_raw_line()
-        return body, False
+            return body, nonempty_tail, starred
+        body, raw = lex.read_string_or_raw_line()
+        nonempty_tail = raw and body != body.rstrip()
+        return body, nonempty_tail, False
 
     def terminate(self):
         if self.state == "DIFF":
-            raise ParseError(f"Missing second DIFF line. ({self.state_position})")
+            self.lexer.error(f"Missing second DIFF line.")
         elif self.state == "INSERT":
             if self.data.below:
                 # It's okay, just finish up with the last replace line found.
-                self.new_paired_lines_instruction("below")
+                self.terminate_paired_lines_instruction("below")
             else:
-                raise ParseError(
+                self.lexer.error(
                     "Missing match line (without '+' symbol) " "after inserted lines."
                 )
         elif self.state == "REPLACE":
             # It's okay, we have collected all the lines we needed.
-            self.new_replace_instruction()
+            self.terminate_replace_instruction()
         elif self.state is not None:
-            raise ParseError(
-                f"Edit automaton ended in non-terminal state. ({self.state_position})"
-            )
+            self.lexer.error(f"Edit automaton ended in non-terminal state.")
         return self.actor
+
+
+class EditAutomatonData(object):
+    """Used like a plain aggregate/dict but with `.` access, not `[""]`."""
+
+    pass

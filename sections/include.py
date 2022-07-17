@@ -13,9 +13,9 @@ Take this opportunity to print a delineation like a 'section' in the tests log.
 """
 
 from actor import Actor
-from exceptions import TestSetError
+from exceptions import TestRunError, colors as c
 from reader import Reader
-from test_set import TestSet
+from test_runner import TestRunner
 
 from pathlib import Path
 
@@ -28,23 +28,15 @@ class Include(Actor):
         self.section = section
         self.context = context
 
-    def execute(self, ts):
-
-        blue = "\x1b[34m"
-        grey = "\x1b[30m"
-        reset = "\x1b[0m"
+    def execute(self, rn):
 
         # Search paths relatively to current one.
-        c = self.context
-        spec = self.spec_file
-        input = self.input_folder if self.input_folder is not None else ts.input_folder
-        if c.filename is None:
-            parent = None
-        else:
-            parent = c.file_path.parent
-            spec = Path(parent, self.spec_file)
-            input = Path(parent, input)
+        parent = self.context.filepath.parent
+        spec = Path(parent, self.spec_file)
+        ifold = self.input_folder if self.input_folder is not None else rn.input_folder
+        input = Path(parent, ifold)
         spec_path, input_path = (Path(p).resolve() for p in (spec, input))
+
         # Attempt to append `.clib` if not present and it would help find the file.
         candidates = [spec_path]
         ext = ".clib"
@@ -56,75 +48,69 @@ class Include(Actor):
                 spec_path = s
                 break
         if not spec_path:
-            raise TestSetError(
-                f"Missing file {self.spec_file} "
-                f"to include from {parent}."
-                f" ({c.position})"
-            )
+            raise TestRunError(f"Missing file to include: {self.spec_file}.")
         if spec_path.is_dir():
-            raise TestSetError(
-                f"The file {self.spec_file} "
-                f"to include from {parent} is a directory."
-                f" ({c.position})"
-            )
+            raise TestRunError(f"The file to include is a directory: {self.spec_file}.")
+
         # Guard against circular inclusions.
-        p, pos = c.include_chain[0]
-        chain = f"\n{pos} includes {grey}{p}{reset}\n which includes "
-        for p, pos in c.include_chain[1:]:
-            chain += f"{grey}{p}{reset} ({pos})\nwhich includes "
-            if spec_path == p:
-                chain += f" {grey}{spec_path}{reset} ({c.position}) again."
-                raise TestSetError(f"Circular inclusion detected:{chain}.")
+        inc = self.context  # Includer context: start with the one we are creating now.
+        while inc:
+            if spec_path == inc.filepath:
+                raise TestRunError(
+                    "Circular inclusion detected:\n"
+                    f"{repr(str(self.context.filename))} "
+                    f"includes {repr(self.spec_file)} again.",
+                    self.context,
+                )
+            inc = inc.includer
+
         if not input_path.exists():
-            raise TestSetError(
+            raise TestRunError(
                 f"Missing input folder {self.input_folder} "
                 f"to include from {parent}."
-                f" ({c.position})"
             )
         if not input_path.is_dir():
-            raise TestSetError(
+            raise TestRunError(
                 f"Input folder {self.input_folder} "
                 f"to include from {parent} is not a directory."
-                f" ({c.position})"
             )
 
         # Start this new test "section".
         if self.section:
             print(
-                f"\n{blue}{self.section.rstrip('.')}{reset} "
-                f"{grey}({self.spec_file}){reset}{blue}:{reset}"
+                f"\n{c.blue}{self.section.rstrip('.')}{c.reset} "
+                f"{c.grey}({self.spec_file}){c.reset}{c.blue}:{c.reset}"
             )
 
-        # Parse instructions in this new spec file.
-        instructions = c.parser.parse_file(
+        # Create new chained context and parse included file within it.
+        instructions = rn.parser.parse_file(
             self.spec_file,
-            spec_path,
-            c.parser.readers,
-            c.include_chain + [(spec_path, c.position)],
+            path=spec_path,
+            _includer_context=self.context,
         )
 
         if self.spawn:
             # Spawn a whole new, full process, but keep it nested within this one.
-            new_id = ts.id + ":"  # Mark pile depth with simple piled up markers.
-            new_set = TestSet(
-                input_path, ts.sandbox_folder, new_id, ts.prepare_commands
+            new_id = rn.id + ":"  # Mark pile depth with simple piled up markers.
+            new_set = TestRunner(
+                input_path, rn.sandbox_folder, new_id, rn.prepare_commands
             )
             new_set.setup_and_run(instructions, report=False)
             # Bring all test reports back to the original set.
-            ts.tests += new_set.tests
+            rn.tests += new_set.tests
             return
 
-        # Otherwise, just feed them to the current test set.
+        # Otherwise, just feed them to the current rn.
         for inst in instructions:
-            ts.execute(inst)
+            rn.execute(inst)
 
 
 class IncludeReader(Reader):
 
     keyword = "include"
 
-    def match(self, input, context):
-        self.introduce(input)
+    def section_match(self, lex):
+        self.introduce(lex)
         spawn = self.find("*")
         parms = self.read_tuple([1, 2])
         try:
@@ -134,6 +120,4 @@ class IncludeReader(Reader):
             input_folder = None
         self.check_colon()
         section = self.read_line()
-        return self.hard_match(
-            Include(spawn, spec_file, input_folder, section, context)
-        )
+        return Include(spawn, spec_file, input_folder, section, self.keyword_context)

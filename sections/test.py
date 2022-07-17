@@ -4,24 +4,18 @@
 
 """
 
-from actor import Actor
 from reader import Reader
+from test_runner import RunnerWrapperActor
 
-
-class Test(Actor):
-    def __init__(self, name):
-        self.name = name
-
-    def execute(self, ts):
-        ts.test_name = self.name
+TestName = RunnerWrapperActor("update_test_name", "TestName")
 
 
 class TestReader(Reader):
 
     keyword = "test"
 
-    def match(self, input, _):
-        self.introduce(input)
+    def section_match(self, lex):
+        self.introduce(lex)
         self.check_colon()
         name = self.read_line(expect_data="test name")
-        return self.hard_match(Test(name))
+        return TestName(self.keyword_context, name)

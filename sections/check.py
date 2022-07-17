@@ -4,26 +4,19 @@
 
 """
 
-from actor import Actor
 from reader import Reader
+from test_runner import RunnerWrapperActor
 
 
-class Check(Actor):
-    def __init__(self, name, position):
-        self.name = name
-        self.position = position
-
-    def execute(self, ts):
-        ts.test_name = self.name
-        ts.run_checks(self.position)
+Check = RunnerWrapperActor("run_checks", "Check")
 
 
 class CheckReader(Reader):
 
     keyword = "CHECK"
 
-    def match(self, input, context):
-        self.introduce(input)
+    def section_match(self, lexer):
+        self.introduce(lexer)
         self.check_colon()
         name = self.read_line(expect_data="test name")
-        return self.hard_match(Check(name, context.position))
+        return Check(self.keyword_context, name)

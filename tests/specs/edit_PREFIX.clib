@@ -19,6 +19,17 @@ success:: Start with same file. EOE
  :a
 :b   EOE
 
+test: Starred/unstarred versions of UNPREF.
+edit (abstract):
+UNPREF  ALL (:) a # Loose indent.
+UNPREF* ALL (:) b # Exact prefix/indent.
+success:: EOE
+a
+ :b
+  :c
+ a
+b   EOE
+
 test: Simple prefix, unpref, remove.
 edit (abstract):
 PREFIX (--)     :a # Insert extra prefix.
@@ -41,17 +52,6 @@ success:: EOE
   :c
  :--a
 --:b   EOE
-
-test: Starred/unstarred versions of UNPREF.
-edit (abstract):
-UNPREF  ALL (:) a # Loose indent.
-UNPREF* ALL (:) b # Exact prefix/indent.
-success:: EOE
-a
- :b
-  :c
- a
-b   EOE
 
 test: Starred/unstarred versions of REMOVE with specified prefix.
 edit (abstract):

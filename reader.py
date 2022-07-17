@@ -1,30 +1,41 @@
-from exceptions import SourceError, NoSectionMatch, ParseError
-from lexer import Lexer, EOI
+from context import ContextLexer
+from exceptions import ParseError, SourceError, NoSectionMatch
 
 from types import MethodType
 
 
 class Reader(object):
-    """Readers are responsible to match partially consumed input
-    and consume a bit of it to produce something meaningful.
+    """Readers are responsible to match one particular section of the file,
+    given a contextualized lexer handed to them by the main parser.
+    They are free to consume it, but must not consume more than they need,
+    because their version of the lexer is eventually offered to subsequent readers
+    if they match.
 
-    "Hard" readers are responsible for finding the end of their match,
-    and hand out the remaining, unused input to the parser.
+    "Hard" readers ar able to directly find the end of their match,
+    and need not be called back.
 
-    "Soft" readers only indicate whether they match a start or not.
-    When started, they are given the rest of the input line by line
-    until another reader matches.
+    "Soft" readers recognize that their section started,
+    but the end of their match is actually the beginning of another reader's match,
+    so they can't exactly tell.
+    Instead of returning a fully parsed object like Actor or Checker,
+    they return a LinesAutomaton to the main parser.
+    The parser will feed this automaton with subsequent input, *line by line*,
+    until another reader matches and takes over.
+    The automaton then `.terminate()`s to produce the actual, fully parsed object.
 
-    Note that the match type is not fixed throughout the lifetime of the reader.
+    Note that readers behave as 'hard' or 'soft' depending on the actual input.
 
     As the parent class of all readers,
     Reader offers a Lexer-wrapping API for basic parsing of the input given in match.
     So, although in principle every subtype may rewrite everything
     and parse the spec file the way it wants,
     there are facilities to read clibate sections with a typical-look.
+
+    Most basic lexing utilities are implemented in the base lexer,
+    here are more high-level pre-defined lexing operations to match clib look.
     """
 
-    def match(self, input, context) -> "MatchResult" or None:
+    def section_match(self, lexer) -> object or None:
         """Check whether the input yields a start match."""
         raise NotImplementedError("Missing method 'match' for {type(self).__name__}.")
 
@@ -32,23 +43,29 @@ class Reader(object):
         """Infer section name, assuming the reader's name is <SectionName>Reader."""
         return type(self).__name__.removesuffix("Reader")
 
-    def define_lexer(self, input):
+    def attach_lexer(self, lex):
         """Entry point into the Reader's API:
-        defines and attaches a Lexer instance to self,
-        so future calls don't need to pass it always as an argument.
+        attaches the instance to self,
+        so future calls don't need to pass it as an explicit argument.
         """
-        self.lexer = Lexer(input)
+        self.lexer = lex
 
     def check_keyword(self):
         """Check that the reader's `self.keyword` is starting the match,
         Otherwise warn the calling parser with the correct exception.
+        Sets `self.keyword_context` for future reference, as part of the API.
         """
-        if not self.lexer.match(self.keyword):
+        if not hasattr(self, "keyword"):
+            raise SourceError(f"No 'self.keyword' defined for {type(self).__name__}.")
+        lex = self.lexer
+        context = lex.context
+        if not lex.match(self.keyword):
             raise NoSectionMatch()
+        self.keyword_context = context
 
-    def introduce(self, input):
+    def introduce(self, lex):
         """Common entrypoint both spawning the lexer and checking section keyword."""
-        self.define_lexer(input)
+        self.attach_lexer(lex)
         self.check_keyword()
 
     def check_colon(self):
@@ -82,86 +99,39 @@ class Reader(object):
         except ParseError:
             pass
         self.lexer.error(
-            "Missing colon ':' or double colon '::' "
+            "Missing colon ':' (soft-matching) or double colon '::' (hard-matching) "
             f"to introduce {self.section_name()} section."
         )
 
-    def soft_match(self, automaton):
-        """Produce a correct soft matching result based on lexing done so far."""
-        return MatchResult(
-            type="soft",
-            lines_automaton=automaton,
-            end=self.lexer.n_consumed,
-        )
-
-    def hard_match(self, object):
-        """Produce a correct hard matching result based on lexing done so far."""
-        return MatchResult(
-            type="hard",
-            parsed=object,
-            end=self.lexer.n_consumed,
-        )
-
     # Defer basic calls to Lexer's API.
-    _lexer_defer = [
-        f for f in dir(Lexer) if any(f.startswith(p) for p in ("read", "find", "check"))
-    ] + ["error"]
-
     def __getattr__(self, name):
-        """Defer basic calls to Lexer's API, provided they conform to the passlist."""
-        if name in self._lexer_defer:
-            method = getattr(Lexer, name)
+        """Defer basic calls to Lexer's API, provided they conform "
+        to the passlist defined by ContextLexer."""
+        if name in ContextLexer._lexer_defer:
+            method = getattr(ContextLexer, name)
             return MethodType(method, self.lexer)
         raise AttributeError(
             f"{type(self).__name__} has no attribute '{name}', "
-            f"and '{name}' is not a method defered to Lexer."
+            f"and '{name}' is not a method defered to the Lexer."
         )
-
-
-class MatchResult(object):
-    "Gather all information related to a positive match result."
-
-    valid_types = ("soft", "hard")
-
-    def __init__(self, type=None, end=None, parsed=None, lines_automaton=None):
-        # Position of the end of match in given input.
-        if not end:
-            raise SourceError("Match results must specify where they end.")
-        self.end = end
-        if type not in self.valid_types:
-            valid = " ".join(f"'{t}'" for t in self.valid_types)
-            raise SourceError(
-                f"Invalid reader match type: '{type}'. Valid types: {valid}."
-            )
-        self.type = type
-        # Resulting object in case of hard matching.
-        if type == "hard" and not parsed:
-            raise SourceError(
-                f"Hard matching result should be provided a parsed object."
-            )
-        self.parsed = parsed
-        # Automaton to construct next objects in case of soft matching.
-        self.lines_automaton = lines_automaton
-        if type == "soft" and not lines_automaton:
-            raise SourceError(
-                f"Soft matching result should be provided a lines automaton."
-            )
 
 
 class LinesAutomaton(object):
     """Lines automaton are returned by soft matching readers
-    to process successive lines into a progressively constructed object
-    until another reader starts matching.
+    to process successive lines into a progressively constructed object,
+    and until another reader starts matching.
     """
 
-    def feed(self, line):
+    def feed(self, lexer):
         """Process one line and keep constructing the object from it.
         Raise LineFeedError in case processing failed.
+        The lexer received will EOI at the end of the line.
         """
         raise NotImplementedError("Missing method 'feed' for {type(self).__name__}.")
 
     def terminate(self):
-        """Signal that all lines have been fed.
+        """That's the signal, send to us by the main parser,
+        that all lines have been fed.
         Finish constructing the object and return it.
         """
         raise NotImplementedError(

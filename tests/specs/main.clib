@@ -1,5 +1,6 @@
 # Use this specification file to introduce all other ones.
 
+# This one is temporarily created from ./README.md at the root of the repo.
 include (basic_awk_from_README): Check basic behaviour of clibate with awk.
 
 # Basic tests with edit section.

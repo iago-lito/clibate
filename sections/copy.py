@@ -17,29 +17,33 @@ quote them with python-like strings.
 """
 
 from actor import Actor
-from lexer import Lexer, EOI
-from reader import Reader, MatchResult, LinesAutomaton
+from reader import Reader, LinesAutomaton
 
 
 class Copy(Actor):
-    def __init__(self, sources, targets):
-        self.sources = sources
-        self.targets = targets
+    def __init__(self):
+        # Filled up during parsing.
+        self.context = None  # (and this one during 'execute').
+        self.sources = []
+        self.targets = []
+        self.contexts = []
 
-    def execute(self, ts):
-        for o, d in zip(self.sources, self.targets):
-            ts.check_input_file(o)
-            ts.copy_from_input(o, d)
+    def execute(self, rn):
+        for src, tgt, cx in zip(self.sources, self.targets, self.contexts):
+            # Set up temporary context so the runner grabs the good on in case of error.
+            self.context = cx
+            rn.check_input_file(src)
+            rn.copy_from_input(src, tgt)
 
 
 class CopyReader(Reader):
 
     keyword = "copy"
 
-    def match(self, input, _):
-        self.introduce(input)
+    def section_match(self, lexer):
+        self.introduce(lexer)
         self.check_colon()
-        return self.soft_match(CopyAutomaton())
+        return CopyAutomaton()
 
 
 class CopyAutomaton(LinesAutomaton):
@@ -48,38 +52,43 @@ class CopyAutomaton(LinesAutomaton):
     arrow = "->"
 
     def __init__(self):
-        self.sources = []
-        self.targets = []
+        self.actor = Copy()
 
-    def feed(self, line, _):
-        """Simple lines of the form 'source -> target' or 'filename fn name'.
+    def feed(self, lex):
+        """Simple lines of the form 'source -> target' or 'filename fname name'.
         Optionally quote the files to escape exotic chars, with python string syntax.
         """
-        l = Lexer(line)
-        if l.find_empty_line():
+        context = lex.context
+        if lex.find_empty_line():
             return
 
-        if (r := l.read_string_or_raw_until(self.arrow)) is None:
+        arrow_cx = lex.lstrip().context
+        if (pre_arrow := lex.read_string_or_raw_until(self.arrow)) is None:
             # No arrow found: interpret the line as a sequence of filenames.
             # Either all quoted or none at all (then all raw reads).
-            if (name := l.read_python_string()) is None:
-                names = l.read_line().split()
-            else:
+            if (name := lex.read_python_string()) is not None:
                 names = [name]
-                while (name := l.read_python_string()) is not None:
+                while (name := lex.read_python_string()) is not None:
                     names.append(name)
-                l.check_empty_line()
-            self.sources += names
-            self.targets += names
+                lex.check_empty_line()
+            else:
+                names = lex.consume().split()
+            self.actor.sources += names
+            self.actor.targets += names
+            self.actor.contexts += len(names) * [context]
             return
-        src, raw = r
+        src, raw = pre_arrow
         if raw and not src:
-            l.error("Could not find source filename in Copy line.")
-        tgt = l.read_string_or_raw_line(expect_data="destination filename")
+            lex.error(
+                f"Missing source filename "
+                f"before {repr(self.arrow)} arrow in copy line.",
+                context=arrow_cx,
+            )
+        tgt = lex.read_string_or_raw_line(expect_data="target filename")
         # Ignore anything after the comment sign.
-
-        self.sources.append(src)
-        self.targets.append(tgt)
+        self.actor.sources.append(src)
+        self.actor.targets.append(tgt)
+        self.actor.contexts.append(context)
 
     def terminate(self):
-        return Copy(self.sources, self.targets)
+        return self.actor

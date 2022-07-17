@@ -36,19 +36,16 @@ def check_output_channel(channel):
 
 
 class OutputChecker(Checker):
-    def _set_output_channel(self, channel):
+    def __init__(self, channel, context):
         check_output_channel(channel)
         self.channel = channel
         self.expecting_stdout = channel == "stdout"
         self.expecting_stderr = channel == "stderr"
+        self.context = context
 
 
 class EmptyOutput(OutputChecker):
     """This degenerated checker expects no output."""
-
-    def __init__(self, channel, position):
-        self._set_output_channel(channel)
-        self.position = position
 
     def check(self, _, stdout, stderr):
         output = eval(self.channel).decode("utf-8")
@@ -60,10 +57,9 @@ class EmptyOutput(OutputChecker):
 class ExactOutput(OutputChecker):
     """Expects to find exactly the given string as output."""
 
-    def __init__(self, channel, expected_output, position):
-        self._set_output_channel(channel)
-        self.expected_output = expected_output
-        self.position = position
+    def __init__(self, output, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.expected_output = output
 
     def check(self, _, stdout, stderr):
         output = eval(self.channel).decode("utf-8")
@@ -82,10 +78,9 @@ class ExactOutput(OutputChecker):
 class OutputSubstring(OutputChecker):
     """Expect to find the given message within the output, irrespective of whitespace."""
 
-    def __init__(self, channel, needle, position):
-        self._set_output_channel(channel)
+    def __init__(self, needle, *args, **kwargs):
+        super().__init__(*args, **kwargs)
         self.needle = needle
-        self.position = position
 
     def check(self, _, stdout, stderr):
         hay = eval(self.channel).decode("utf-8")
@@ -107,8 +102,8 @@ class OutputClearer(Actor):
         check_output_channel(channel)
         self.channel = channel
 
-    def execute(self, ts):
-        ts.clear_checkers([self.channel])
+    def execute(self, rn):
+        rn.clear_checkers([self.channel])
 
 
 class OutputReader(Reader):
@@ -119,37 +114,40 @@ class OutputReader(Reader):
         self.keyword = channel
         self.channel = channel
 
-    def match(self, input, context):
+    def section_match(self, lex):
+        self.introduce(lex)
         channel = self.channel
-        self.introduce(input)
         colon = self.check_colon_type()
-        pos = context.position
 
+        cx = self.keyword_context
         if colon == "::":
             if self.find("*"):
-                return self.hard_match(EmptyOutput(channel, pos))
+                return EmptyOutput(channel, cx)
 
             output = self.read_heredoc_like(name=channel)
-            return self.hard_match(ExactOutput(channel, output, pos))
+            return ExactOutput(output, channel, cx)
 
         if colon == ":":
             if self.find("*"):
-                return self.hard_match(OutputClearer(channel))
-            return self.soft_match(OutputSubstringAutomaton(channel, pos))
+                return OutputClearer(channel, cx)
+            return OutputSubstringAutomaton(channel, cx)
 
 
 class OutputSubstringAutomaton(LinesAutomaton):
-    def __init__(self, channel, position):
+    def __init__(self, channel, context):
         check_output_channel(channel)
-        self.position = position
+        self.context = context
         self.channel = channel
         self.output = []
 
-    def feed(self, line, _):
-        self.output.append(Lexer(line).read_string_or_raw_line()[0])
+    def feed(self, lex):
+        self.output.append(lex.read_string_or_raw_line()[0])
 
     def terminate(self):
         total = " ".join(self.output)
         if not total.strip():
-            raise ParseError(f"Blank expected {self.channel} in last section.")
-        return OutputSubstring(self.channel, total, self.position)
+            raise ParseError(
+                f"Blank expected {self.channel} in last section.",
+                self.context,
+            )
+        return OutputSubstring(total, self.channel, self.context)
