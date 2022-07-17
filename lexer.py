@@ -4,6 +4,7 @@
 from exceptions import ParseError
 
 import ast
+import re
 import textwrap as tw
 
 
@@ -120,10 +121,12 @@ class Lexer(object):
         return self
 
     def match(self, token) -> bool:
-        """Return True if the input starts with the given token and consume it.
+        r"""Return True if the input starts with the given token and consume it.
         Ask for EOI to check whether no input is left.
         Ask for empty token to always match.
-        >>> l = Lexer(" a b c ")
+        Ask for a compiled re.Pattern type to match with regular expressions.
+        >>> lex = Lexer(" a b c ")
+        >>> l = lex.copy()
         >>> l.match('a'), l.n_consumed
         (False, 0)
         >>> l.match(''), l.n_consumed
@@ -142,19 +145,41 @@ class Lexer(object):
         (True, 7)
         >>> l.match(EOI), l.n_consumed
         (True, 7)
+
+        >>> token = re.compile(r'\b[abc]\b\s+')
+        >>> l = lex.copy()
+        >>> l.match(token), l.n_consumed
+        (False, 0)
+        >>> l.lstrip().match(token), l.n_consumed
+        (True, 3)
+        >>> l.lstrip().match(token), l.n_consumed
+        (True, 5)
+        >>> l.lstrip().match(token), l.n_consumed
+        (True, 7)
+        >>> l.lstrip().match(token), l.n_consumed
+        (False, 7)
         """
         if token is EOI:
             return not self.input
+        if type(token) is re.Pattern:
+            if m := token.match(self.input):
+                matched = m.group(0)
+                self.input = self.input.removeprefix(matched)
+                self.n_consumed += len(matched)
+                return True
+            return False
         if self.input.startswith(token):
             self.input = self.input.removeprefix(token)
             self.n_consumed += len(token)
             return True
         return False
 
-    def find(self, token) -> bool:
-        """Consume whitespace until the given token is found.
+    def find(self, token) -> bool or (bool, str or None):
+        r"""Consume whitespace until the given token is found.
         Return False and consume nothing if it does not appear next in the input.
-        >>> l = Lexer(" a b c d ")
+        Return also the match in case a regex is given as a token (None if nomatch).
+        >>> lex = Lexer(" a b c d ")
+        >>> l = lex.copy()
         >>> l.find('a'), l.n_consumed # Skip to first such token.
         (True, 2)
         >>> l.find('X'), l.n_consumed # Not found.
@@ -163,8 +188,8 @@ class Lexer(object):
         (False, 2)
         >>> l.find(' b'), l.n_consumed # Whitespace in token is ok.
         (True, 4)
-        >>> l.find(''), l.n_consumed # Equivalent to l.lstrip()
-        (True, 5)
+        >>> l.find(''), l.n_consumed # Found immediately.
+        (True, 4)
         >>> l.find('c d'), l.n_consumed
         (True, 8)
         >>> l.find(EOI), l.n_consumed # EOI is the next thing after whitespace.
@@ -175,29 +200,57 @@ class Lexer(object):
         (True, 9)
         >>> l.find(EOI), l.n_consumed
         (True, 9)
+
+        Same tests with regex tokens.
+        >>> l, rc = lex.copy(), re.compile
+        >>> l.find(rc(r'a')), l.n_consumed
+        ((True, 'a'), 2)
+        >>> l.find(rc(r'X')), l.n_consumed
+        ((False, None), 2)
+        >>> l.find(rc(r'\s+b')), l.n_consumed # Whitespace in token start.
+        ((True, ' b'), 4)
+        >>> l.find(rc(r'')), l.n_consumed  # Found immediately.
+        ((True, ''), 4)
+        >>> l.find(rc(r'c[\sd]+')), l.n_consumed  # All the rest.
+        ((True, 'c d '), 9)
+        >>> l.find(rc(r'X')), l.n_consumed  # Nothing left..
+        ((False, None), 9)
+        >>> l.find(rc(r'')), l.n_consumed  # .. but emptyness.
+        ((True, ''), 9)
         """
+        if token == "":
+            return True
         l = self.copy().lstrip()
-        if token == "" or (token == EOI and not l.input):
+        if token == EOI and not l.input:
             self.become(l)
             return True
         if token == EOI:
             return False
         # Watch out not to consume part of the token
         # if it's also whitespace-lstrip-able.
-        try:
-            ws, rest = self.input.split(token, 1)
-        except ValueError:
-            # The token does not occur.
-            return False
+        if type(token) is re.Pattern:
+            if (m := token.search(self.input)) is None:
+                # The token is not even found.
+                return (False, None)
+            s, e = m.span()
+            ws, rest = self.input[:s], self.input[e:]
+            match = m.group(0)
+        else:
+            try:
+                ws, rest = self.input.split(token, 1)
+                match = token
+            except ValueError:
+                # The token is not even found.
+                return False
         if ws.strip():
             # There was non-whitespace before the token.
-            return False
-        self.n_consumed += len(ws) + len(token)
+            return (False, None) if type(token) is re.Pattern else False
+        self.n_consumed += len(ws) + len(match)
         self.input = rest
-        return True
+        return (True, match) if type(token) is re.Pattern else True
 
     def find_either(self, tokens) -> str or EOI or None:
-        """Consume whitespace until one of the given tokens is found.
+        r"""Consume whitespace until one of the given tokens is found.
         Return the longest token if several do match.
         Return None if none appears next in the input.
         >>> l = Lexer(" a :: b ")
@@ -209,7 +262,7 @@ class Lexer(object):
         (None, 5)
         >>> l.find_either([' b', '']), l.n_consumed # Whitespace is okay.
         (' b', 7)
-        >>> l.find_either(['', EOI]), l.n_consumed # Empty wins over EOI.
+        >>> l.lstrip().find_either(['', EOI]), l.n_consumed # Empty wins over EOI.
         ('', 8)
         >>> l.find_either(['X', 'Y']), l.n_consumed
         (None, 8)
@@ -217,6 +270,23 @@ class Lexer(object):
         (EOI, 8)
         >>> l.find_either(['', EOI]), l.n_consumed
         ('', 8)
+
+        What about regexes tokens?
+        >>> l, rc = Lexer(" a :: b "), re.compile
+        >>> l.find_either([rc(r'a'), ':']), l.n_consumed # First wins
+        ('a', 2)
+        >>> l.find_either([rc(r':+'), ':']), l.n_consumed # Longest wins (the regex)
+        ('::', 5)
+        >>> l.find_either([rc(r'\s+'), ' b']), l.n_consumed # Longest wins (the literal)
+        (' b', 7)
+        >>> l.find_either([rc(r'\s*?'), EOI]), l.n_consumed # Interacts okay with EOI.
+        ('', 7)
+        >>> l.find_either([EOI, rc(r'\s*')]), l.n_consumed
+        (' ', 8)
+        >>> l.find_either([EOI, rc(r'\s*')]), l.n_consumed
+        ('', 8)
+        >>> l.find_either([EOI, rc(r'\s+')]), l.n_consumed
+        (EOI, 8)
         """
         # Spawn lexers to make them all 'find' then pick best one.
         longest = None
@@ -226,10 +296,20 @@ class Lexer(object):
             if (
                 (best_lex is None)
                 or (longest is EOI)
+                or (type(token) is re.Pattern)
                 or (token is not EOI and len(longest) < len(token))
             ):
-                if l.find(token):
-                    longest = token
+                # Search.
+                if type(token) is re.Pattern:
+                    found, match = l.find(token)
+                else:
+                    found = l.find(token)
+                    match = token if found else None
+                if not found:
+                    continue
+                # Record if best so far.
+                if best_lex is None or longest is EOI or len(longest) < len(match):
+                    longest = match
                     best_lex = l
                     l = self.copy()
         if best_lex is not None:
@@ -294,10 +374,11 @@ class Lexer(object):
         consume_stop=True,
         strip=False,
         expect_data=None,
-    ) -> str or None:
+    ) -> str or None or (str, str):
         """Return all raw input before the fixed stop pattern.
         None if 'stop' cannot be found.
         Request EOI to return all remaining input.
+        If requesting a regex pattern, the match value is also returned.
         In this case the returned value cannot be None.
         strip: True to remove whitespace padding from the read
                (note that it's still consumed).
@@ -332,6 +413,27 @@ class Lexer(object):
         >>> l.read_until(':', strip=True, expect_data='fruit'), l.n_consumed
         Traceback (most recent call last):
         exceptions.ParseError: Missing expected data: 'fruit'.
+
+        With regular expressions as stops.
+        >>> l, rc = Lexer(" raw read <marker> another read <mark>"), re.compile
+        >>> l.read_until(rc(r'<.*?>')), l.n_consumed
+        ((' raw read ', '<marker>'), 18)
+        >>> l.read_until(rc(r'<[uvz]+>')), l.n_consumed
+        (None, 18)
+        >>> l.read_until(rc(r'')), l.n_consumed
+        (('', ''), 18)
+        >>> l.read_until(rc(r'<.*?>'), False), l.n_consumed
+        ((' another read ', '<mark>'), 32)
+        >>> l.read_until(rc(r'[.*?]'), False), l.n_consumed
+        (None, 32)
+        >>> l.read_until(rc(r'<.*?>'), False), l.n_consumed
+        (('', '<mark>'), 32)
+        >>> l.read_until(rc(r'<.*?>'), True), l.n_consumed
+        (('', '<mark>'), 38)
+        >>> l.read_until(rc(r'<.*?>'), True), l.n_consumed
+        (None, 38)
+        >>> l.read_until(rc(r''), True), l.n_consumed
+        (('', ''), 38)
         """
         lex = self.copy()
         if stop is EOI:
@@ -341,24 +443,37 @@ class Lexer(object):
         else:
             if stop == "":
                 return ""
-            try:
-                read, lex.input = lex.input.split(stop, 1)
-            except ValueError:
-                return None
+
+            if type(stop) is re.Pattern:
+                if (m := stop.search(self.input)) is None:
+                    return None
+                s, e = m.span()
+                read, lex.input = lex.input[:s], lex.input[e:]
+                match = m.group(0)
+            else:
+                try:
+                    read, lex.input = lex.input.split(stop, 1)
+                    match = stop
+                except ValueError:
+                    return None
+
             lex.n_consumed += len(read)
             if consume_stop:
-                lex.n_consumed += len(stop)
+                lex.n_consumed += len(match)
             else:
-                lex.input = stop + lex.input
+                lex.input = match + lex.input
+
         if strip:
             read = read.strip()
+
         if expect_data is not None and not read:
             self.error(
                 f"Missing expected data: {repr(expect_data)}.",
                 (len(stop) if stop is not EOI else 0) + len(read.lstrip()),
             )
+
         self.become(lex)
-        return read
+        return (read, match) if type(stop) is re.Pattern else read
 
     def read_until_either(self, stops, *args, **kwargs) -> ("stop", str) or None:
         """Raw read until the first stop is found, and return it
@@ -367,31 +482,22 @@ class Lexer(object):
         >>> l = Lexer("a b c aa bb cc u v w uu vv ww")
         >>> l.read_until_either(['b', 'cc']), l.n_consumed # First stop wins.
         (('b', 'a '), 3)
-
         >>> l.read_until_either(['c', 'cc']), l.n_consumed # Closest stop wins.
         (('c', ' '), 5)
-
         >>> l.read_until_either(['c', 'cc']), l.n_consumed # Longest stop wins.
         (('cc', ' aa bb '), 14)
-
         >>> l.read_until_either(['XX', 'XY']), l.n_consumed # No such stops.
         (None, 14)
-
         >>> l.read_until_either([]), l.n_consumed # No stops.
         (None, 14)
-
         >>> l.read_until_either(['', 'u']), l.n_consumed # Empty Always stops.
         (('', ''), 14)
-
         >>> l.read_until_either('uv'), l.n_consumed # Equivalent to ['u', 'v'].
         (('u', ' '), 16)
-
         >>> l.read_until_either(['uu', EOI]), l.n_consumed # Stop before EOI.
         (('uu', ' v w '), 23)
-
         >>> l.read_until_either(['XX', EOI]), l.n_consumed # No such stop before EOI.
         ((EOI, ' vv ww'), 29)
-
         >>> l.read_until_either(['afterstring']), l.n_consumed # Post-EOI vacuum.
         (None, 29)
         >>> l.read_until_either(['something', EOI]), l.n_consumed # Still budging.
@@ -399,32 +505,81 @@ class Lexer(object):
         >>> l.read_until_either(['something', '']), l.n_consumed # Still budging.
         (('', ''), 29)
 
+        With regular expression stops.
+        >>> l, rc = Lexer("a b c aa bb cc u v w uu vv ww"), re.compile
+        >>> l.read_until_either([rc(r'[bcd]'), 'cc']), l.n_consumed # First wins.
+        (('b', 'a '), 3)
+        >>> l.read_until_either([rc(r'c'), rc(r'c{2}')]), l.n_consumed # Closest wins.
+        (('c', ' '), 5)
+        >>> l.read_until_either([rc(r'c+?'), rc(r'c+')]), l.n_consumed # Longest wins.
+        (('cc', ' aa bb '), 14)
+        >>> l.read_until_either([rc(r'X+'), rc(r'Y')]), l.n_consumed # Not found.
+        (None, 14)
+        >>> l.read_until_either([rc(r''), rc(r'u')]), l.n_consumed # Empty stops.
+        (('', ''), 14)
+        >>> l.read_until_either([rc(r'[uv]')]), l.n_consumed # Either.
+        (('u', ' '), 16)
+        >>> l.read_until_either([rc(r'u+'), EOI]), l.n_consumed # Avoid EOI.
+        (('uu', ' v w '), 23)
+        >>> l.read_until_either([rc(r'X+'), EOI]), l.n_consumed # Can't avoid EOI.
+        ((EOI, ' vv ww'), 29)
+        >>> l.read_until_either([rc(r'NOTHING')]), l.n_consumed # Vacuum.
+        (None, 29)
+        >>> l.read_until_either([rc(r'something'), EOI]), l.n_consumed # Budging.
+        ((EOI, ''), 29)
+        >>> l.read_until_either([rc(r'X*'), EOI]), l.n_consumed # Budging.
+        (('', ''), 29)
+
         Interact with stop consumption option.
-        >>> l = Lexer(" before : after ")
+        >>> l = Lexer(" before :: after ")
         >>> l.read_until_either([':', 'a'], False), l.n_consumed # Stop not consumed.
         ((':', ' before '), 8)
         >>> l.read_until_either([':', EOI], False), l.n_consumed # Blocked here then.
         ((':', ''), 8)
-        >>> l.read_until_either([':', EOI], True), l.n_consumed # Eventually consume.
-        ((':', ''), 9)
+        >>> l.read_until_either([rc(r':'), EOI], False), l.n_consumed # Even with regs.
+        ((':', ''), 8)
+        >>> l.read_until_either([rc(r':+'), EOI], True), l.n_consumed # Eventually gulp.
+        (('::', ''), 10)
         >>> l.read_until_either([':', EOI], True), l.n_consumed
-        ((EOI, ' after '), 16)
+        ((EOI, ' after '), 17)
         """
         # Find first stop.
         n_first, first = -1, None
+        best_match = None
         for stop in stops:
-            f = self.input.find(stop) if stop is not EOI else len(self.input)
+            # Calculate index of match, if any.
+            if type(stop) is re.Pattern:
+                if (m := stop.search(self.input)) is None:
+                    f = -1
+                    match = None
+                else:
+                    f, _ = m.span()
+                    match = m.group(0)
+            elif stop is EOI:
+                f = len(self.input)
+                match = EOI
+            else:
+                f = self.input.find(stop)
+                match = stop
             if (
                 (n_first == -1 and f != -1)
                 or (f != -1 and n_first != -1 and f < n_first)
-                or (f != -1 and f == n_first and len(first) < len(stop))
+                or (
+                    f != -1
+                    and f == n_first
+                    and match is not EOI
+                    and len(best_match) < len(match)
+                )
             ):
                 first = stop
+                best_match = match
                 n_first = f
         if n_first == -1:
-            # None found.
             return None
         # Consume until then.
+        if type(first) is re.Pattern:
+            read, match = self.read_until(first, *args, **kwargs)
+            return match, read
         return first, self.read_until(first, *args, **kwargs)
 
     def read_string_or_raw_until(
@@ -446,12 +601,12 @@ class Lexer(object):
                      or None if no stop was found.
 
         With a string.
-        >>> l = Lexer("  'string' :: next")
+        >>> l, rc = Lexer("  'string' :: next"), re.compile
         >>> c = l.copy()
         >>> c.read_string_or_raw_until('::'), c.n_consumed
         (('string', False), 13)
         >>> c = l.copy()
-        >>> c.read_string_or_raw_until('::', consume_stop=False), c.n_consumed
+        >>> c.read_string_or_raw_until(rc(r':+'), consume_stop=False), c.n_consumed
         (('string', False), 11)
 
         With raw data.
@@ -467,6 +622,8 @@ class Lexer(object):
         >>> l = Lexer("  'raw <nomark> next")
         >>> l.read_string_or_raw_until('::'), l.n_consumed
         (None, 0)
+        >>> l.read_string_or_raw_until(rc(r':+')), l.n_consumed
+        (None, 0)
 
         Until EOF.
         >>> l = Lexer("  'string'  ")
@@ -481,20 +638,20 @@ class Lexer(object):
         >>> l.read_string_or_raw_until('::', expect_data='fruit'), l.n_consumed
         ('pear', 11)
         >>> l = Lexer("  pear :: ")
-        >>> l.read_string_or_raw_until('::', expect_data='fruit'), l.n_consumed
+        >>> l.read_string_or_raw_until(rc(r':+'), expect_data='fruit'), l.n_consumed
         ('pear', 9)
         >>> l = Lexer("  ' pear ' :: ")
         >>> l.read_string_or_raw_until('::', expect_data='fruit'), l.n_consumed
         (' pear ', 13)
         >>> l = Lexer("   :: ") # No fruit.
-        >>> l.read_string_or_raw_until('::', expect_data='fruit')
+        >>> l.read_string_or_raw_until(rc(r':+'), expect_data='fruit')
         Traceback (most recent call last):
         exceptions.ParseError: Missing expected data: 'fruit'.
         >>> l = Lexer(" '  ' :: ") # Explicit blank fruit.
         >>> l.read_string_or_raw_until('::', expect_data='fruit'), l.n_consumed
         ('  ', 8)
         >>> l = Lexer(" '' :: ") # Explicit empty fruit.
-        >>> l.read_string_or_raw_until('::', expect_data='fruit'), l.n_consumed
+        >>> l.read_string_or_raw_until(rc(r':+'), expect_data='fruit'), l.n_consumed
         ('', 6)
 
         With unwanted data.
@@ -515,7 +672,7 @@ class Lexer(object):
         exceptions.ParseError: Unexpected data found before string: 'unwanted'.
 
         >>> l = Lexer("  'string''again' :: next")
-        >>> l.read_string_or_raw_until('::')
+        >>> l.read_string_or_raw_until(rc(r':+'))
         Traceback (most recent call last):
         exceptions.ParseError: Unexpected data found between string and '::': "'again'".
 
@@ -532,14 +689,14 @@ class Lexer(object):
 
         Use guards to not overflow with raw reads.
         >>> l = Lexer(" '''multiline string\n without a need for a guard''' \n :: next")
-        >>> l.read_string_or_raw_until('::'), l.n_consumed
+        >>> l.read_string_or_raw_until(rc(r':+')), l.n_consumed
         (('multiline string\n without a need for a guard', False), 56)
 
         >>> l = Lexer(" multiline raw read\n not matching because of guards \n :: next")
         >>> l.read_string_or_raw_until('::'), l.n_consumed
         (None, 0)
         >>> l = Lexer(" override guards \n to make this read \n :: next")
-        >>> l.read_string_or_raw_until('::', raw_guards=[]), l.n_consumed
+        >>> l.read_string_or_raw_until(rc(r':+'), raw_guards=[]), l.n_consumed
         (('override guards \n to make this read', True), 41)
         """
         if (r := self.read_string_or_raw_until_either([stop], *args, **kwargs)) is None:
@@ -558,16 +715,16 @@ class Lexer(object):
     ) -> ("stop", str, bool) or None or ("stop", str):
         """Same that read_string_or_raw_until,
         but defer to `read_until_either` instead of `read_until`.
-        >>> l = Lexer("  'string' :: next")
-        >>> l.read_string_or_raw_until_either(['--', 'nosuchstop']), l.n_consumed
+        >>> l, rc = Lexer("  'string' :: next"), re.compile
+        >>> l.read_string_or_raw_until_either(['--', rc(r'nosuchstop')]), l.n_consumed
         (None, 0)
         >>> l.read_string_or_raw_until_either(['::', EOI]), l.n_consumed
         (('::', 'string', False), 13)
 
-        >>> l.read_string_or_raw_until_either(['::', EOI]), l.n_consumed
+        >>> l.read_string_or_raw_until_either([rc(r':+'), EOI]), l.n_consumed
         ((EOI, 'next', True), 18)
 
-        >>> l.read_string_or_raw_until_either(['::', '--']), l.n_consumed # Nothing left.
+        >>> l.read_string_or_raw_until_either(['::', rc(r'-+')]), l.n_consumed # Noleft.
         (None, 18)
         """
         # Use a copy to backtrack if needed.
