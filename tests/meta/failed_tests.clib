@@ -1,0 +1,98 @@
+# Break a couple of tests and check that ouput does reflect it.
+
+# Only work on the small, README tests, say.
+command: clibate/main.py specs/basic_awk_from_README.clib -i input
+
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+
+test: Break first test.
+edit (specs/basic_awk_from_README.clib):
+    DIFF   A-B-C: 26
+    ~      A-B-C: 25
+stdout:: <EOO>
+  The program is running correctly.. FAIL
+  The difference is written on disk and reflected into the program output.. PASS
+  The program is running like the first time.. PASS
+  Introduce permanent modifications to the awk program file.. PASS
+  The modification is now persistent accross tests.. PASS
+  Failing with invalid awk syntax.. PASS
+  Transform awk sources.. PASS
+  Comment out a line in awk sources.. PASS
+  Delete a line in awk sources.. PASS
+  Alternately, modify the command.. PASS
+<EOO>
+stderr:: EOE
+
+🗙 1 test has failed:
+
+The program is running correctly. <specs/basic_awk_from_README.clib:29:1>
+Expected to find on stdout:
+A-B-C: 25
+found instead:
+A-B-C: 26
+
+
+10 tests run: 9 successes, 1 failure.
+
+EOE
+EXITCODE 1
+RUNTEST
+
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+
+test: Break several tests.
+edit (specs/basic_awk_from_README.clib):
+    # Break first.
+    DIFF   A-B-C: 26
+    ~      A-B-C: 25
+    # Break another.
+    DIFF   A+B+C: 26
+    ~      A+B+C: 25
+    # Break last.
+    DIFF   success: A+B+C is 26
+    ~      success: A+B+C is 25
+stdout:: <EOO>
+  The program is running correctly.. FAIL
+  The difference is written on disk and reflected into the program output.. PASS
+  The program is running like the first time.. PASS
+  Introduce permanent modifications to the awk program file.. PASS
+  The modification is now persistent accross tests.. FAIL
+  Failing with invalid awk syntax.. PASS
+  Transform awk sources.. PASS
+  Comment out a line in awk sources.. PASS
+  Delete a line in awk sources.. PASS
+  Alternately, modify the command.. FAIL
+<EOO>
+stderr:: EOE
+
+🗙 3 tests have failed:
+
+The program is running correctly. <specs/basic_awk_from_README.clib:29:1>
+Expected to find on stdout:
+A-B-C: 25
+found instead:
+A-B-C: 26
+
+
+The modification is now persistent accross tests. <specs/basic_awk_from_README.clib:53:1>
+Expected to find on stdout:
+A+B+C: 25
+found instead:
+A+B+C: 26
+
+
+Alternately, modify the command. <specs/basic_awk_from_README.clib:91:1>
+<specs/basic_awk_from_README.clib:93:1>
+Expected to find on stdout:
+A+B+C is 25
+found instead:
+A+B+C is 26
+
+
+10 tests run: 7 successes, 3 failures.
+
+EOE
+EXITCODE 1
+RUNTEST
+
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #

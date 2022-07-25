@@ -1,0 +1,55 @@
+# In the general testing context of `broken_specs`.
+
+# Only work on this file.
+edit* (specs/main.clib):
+    REPLACE '# (include \(DIFF_awk\):)' BY \1
+
+test: Missing double colon.
+edit (specs/DIFF_awk.clib):
+    DIFF file (main.awk):: EOF
+    ~    file (main.awk): EOF
+failure:: EOE
+    Clibate parsing error:
+    Missing double colon '::' to introduce File section. <DIFF_awk:8:16>
+    <TEST_FOLDER>/specs/DIFF_awk.clib
+    included from <TEST_FOLDER>/specs/main.clib:7:1
+EOE
+
+test: Missing heredoc-like opening marker.
+edit (specs/DIFF_awk.clib):
+    DIFF file (main.awk):: EOF
+    ~    file (main.awk)::
+# The next token '{' is picked as marker, so the parser skips to next '{'
+# then it understands nothing.
+failure:: EOE
+    Clibate parsing error:
+    No readers matching input. <DIFF_awk:12:1>
+    <TEST_FOLDER>/specs/DIFF_awk.clib
+    included from <TEST_FOLDER>/specs/main.clib:7:1
+EOE
+
+test: Wrong heredoc-like opening marker.
+edit (specs/DIFF_awk.clib):
+    DIFF file (main.awk):: EOF
+    ~    file (main.awk):: EOW
+failure:: EOE
+    Clibate parsing error:
+    Missing closing file marker: 'EOW'. <DIFF_awk:8:19>
+    <TEST_FOLDER>/specs/DIFF_awk.clib
+    included from <TEST_FOLDER>/specs/main.clib:7:1
+EOE
+
+test: Wrong heredoc-like closing marker.
+edit (specs/DIFF_awk.clib):
+    DIFF EOF
+    ~    EOW
+failure:: EOE
+    Clibate parsing error:
+    Missing closing file marker: 'EOF'. <DIFF_awk:8:19>
+    <TEST_FOLDER>/specs/DIFF_awk.clib
+    included from <TEST_FOLDER>/specs/main.clib:7:1
+EOE
+
+# Silent file again to speedup subsequent tests.
+edit* (specs/main.clib):
+    REPLACE '(include \(DIFF_awk\):)' BY r'# \1'

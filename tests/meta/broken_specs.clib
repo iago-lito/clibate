@@ -1,0 +1,29 @@
+# Introduce syntax errors into the tests to check how clibates reports them.
+
+test: No such specification file.
+command: clibate/main.py specs/notafile.clib -i input
+failure:
+    "No such file or directory: '<TEST_FOLDER>/specs/notafile.clib'"
+
+test: No such input folder.
+command: clibate/main.py specs/main.clib -i notafolder
+failure:
+    "Could not find input folder: '<TEST_FOLDER>/notafolder'. <toplevel context>"
+
+# Fix command for the next.
+command: clibate/main.py specs/main.clib -i input
+
+# Introduce mistakes in various sections.
+include (broken_general): Check general errors with basic sections.
+
+# Speedup tests by commenting out un-broken specifications.
+edit* (specs/main.clib):
+    REPLACE ALL include BY '# include'
+
+# The specifications to break are restored within each file.
+include (broken_Copy): Check errors in Copy section.
+include (broken_File): Check errors in File section.
+include (broken_DIFF): Check errors with DIFF instructions.
+include (broken_INSERT): Check errors with INSERT instructions.
+include (broken_PREFIX): Check errors with PREFIX/UNPREF/REMOVE instructions.
+include (broken_REPLACE): Check errors with REPLACE instructions.

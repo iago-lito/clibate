@@ -89,8 +89,8 @@ edit (abstract):
 INSERT ALL *   :a # Match without indent.
        +       U  # Keep it.
        +   (-) V  # Extend it.
-     # + *     X  # Clib not yet meta-tested to check expected errors..
-     # + * (-) Y  # .. but these two should be forbidden.
+     # + *     X  # For clibate's meta-testing to check expected error..
+     # + * (-) Y  # .. because these two are forbidden.
 success:: EOE
 :a
 U

@@ -1,0 +1,6 @@
+# Meta-test clibate,
+# using itself to check its own output in case of success/error.
+
+include (setup): Run clibate within itself.
+include (failed_tests): Run clibate on broken tests.
+include (broken_specs): Clibate reports test specifications errors.

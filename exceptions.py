@@ -1,4 +1,5 @@
 """Gather various exceptions semantics here.
+
 """
 
 # Escape codes for coloring output.

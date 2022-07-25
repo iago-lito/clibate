@@ -1,0 +1,96 @@
+# All basic tests specified in `specs/` are supposed to pass:
+# use them as our own data folder to break them at will.
+copy: specs input
+      # Also, symlink the whole project within itself to run the main command.
+      meta/clibate -> clibate
+
+# Don't forget the file extracted from README.
+command: cat clibate/README.md
+       | sed -z 's/.*```clib\n\(.*?\).*/\1/g'
+       > specs/basic_awk_from_README.clib
+RUN
+
+test: Run clibate command with help message.
+command: clibate/main.py -h
+success:: EOO
+usage: main.py [-h] [-i INPUT_FOLDER] [-s SANDBOX_FOLDER] spec_file
+
+positional arguments:
+  spec_file             Clib file specifying tests to be run.
+
+options:
+  -h, --help            show this help message and exit
+  -i INPUT_FOLDER, --input-folder INPUT_FOLDER
+                        Folder containing input data for the tests to run against.
+  -s SANDBOX_FOLDER, --sandbox-folder SANDBOX_FOLDER
+                        Folder to create temporary tests folders within.
+EOO
+
+test: Run whole clibate valid test set.
+command: clibate/main.py specs/main.clib -i input
+success:: EOO
+
+Check basic behaviour of clibate with awk (basic_awk_from_README):
+  The program is running correctly.. PASS
+  The difference is written on disk and reflected into the program output.. PASS
+  The program is running like the first time.. PASS
+  Introduce permanent modifications to the awk program file.. PASS
+  The modification is now persistent accross tests.. PASS
+  Failing with invalid awk syntax.. PASS
+  Transform awk sources.. PASS
+  Comment out a line in awk sources.. PASS
+  Delete a line in awk sources.. PASS
+  Alternately, modify the command.. PASS
+
+Check basic edit DIFF options on a small awk program (DIFF_awk):
+  Initial expected output.. PASS
+  First edit is temporary.. PASS
+  Second edit is permanent, first edit has been rolled back.. PASS
+  Third edit is temporary again, second edit is still there.. PASS
+  Match all similar lines irrespective of indentation.. PASS
+  Match only the first one with precise indentation.. PASS
+  Match only the second one with precise indentation.. PASS
+  Replace with a commented line.. PASS
+  Revert last permanent edit and replace both lines with different indent.. PASS
+
+Check edit INSERT paired-lines options (edit_INSERT):
+  Start with same file.. PASS
+  Insert below first match, preserving indent.. PASS
+  Insert below all matches, preserving indents.. PASS
+  All inserts with loose indent matched.. PASS
+  All inserts with exact indent matched.. PASS
+  All inserts with no indent matched.. PASS
+  All inserts with both prefix and indent matched.. PASS
+  Inserting on top of file.. PASS
+  Insert above works like insert below.. PASS
+  Combine inserts.. PASS
+  Insertions can be chained on the result of previous ones.. PASS
+  But inserters won't be trapped in a loop.. PASS
+  Match trailing space.. PASS
+  Insert with regex match/replace.. PASS
+  Capture all line with the regex pattern.. PASS
+
+Check edit PREFIX/UNPREF/REMOVE single-lines options (edit_PREFIX):
+  Start with same file.. PASS
+  Starred/unstarred versions of UNPREF.. PASS
+  Simple prefix, unpref, remove.. PASS
+  Starred versions of PREFIX.. PASS
+  Starred/unstarred versions of REMOVE with specified prefix.. PASS
+  Remove with exactly no ident.. PASS
+
+Check edit REPLACE options (edit_REPLACE):
+  Start with the same file.. PASS
+  Basic regex replacement.. PASS
+  Replace all.. PASS
+  Replace all with regex constructs.. PASS
+  Replace all with regex constructs.. PASS
+  Non-words 'BY's are unambiguous.. PASS
+  Ambiguous patterns can be quoted.. PASS
+  Quote also escapes comment signs.. PASS
+  Split over two lines.. PASS
+  Patterns matches file over multiple lines.. PASS
+  Split match pattern over multiple lines.. PASS
+  Split replace pattern over multiple lines.. PASS
+
+✔ Success: 52 tests run.
+EOO

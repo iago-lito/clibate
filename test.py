@@ -22,28 +22,43 @@ def run_source_tests(dir):
     with open(clib_path, "w") as file:
         file.write(clib)
 
-    specs = Path(dir, "tests/specs/main.clib")
-    input = Path(dir, "tests/input")
-    sandbox = Path(dir, "tests")
+    readme_extract_cleared = False
+    clearing_message = False
+    for (message, paths) in [
+        (
+            "Testing basic clibate successes.",
+            ("tests/specs/main.clib", "tests/input", "tests"),
+        ),
+        (
+            "Meta-testing clibate, including tests failures and clibate errors.",
+            ("tests/meta/main.clib", "tests", "tests"),
+        ),
+    ]:
 
-    code = 0
-    try:
-        if error := toplevel(specs, input, sandbox):
-            # Project testing failure.
-            message, code = error
-            print(message, file=sys.stderr)
-            raise AssertionError("Clibate testing failed.")
-    except:
-        code = -1
-        print(
-            f"Expection caught while running tests, cleaning up {clib_path}..",
-            end="",
-        )
-        raise
-    finally:
-        os.remove(clib_path)
-        if code:
-            print(" done.")
+        print("\n{0}{1}{0}".format(" ".join(7 * "-"), message))
+
+        specs, input, sandbox = (Path(dir, p) for p in paths)
+
+        try:
+            if error := toplevel(specs, input, sandbox):
+                # Project testing failure.
+                message, code = error
+                print(message, file=sys.stderr)
+                break
+        except:
+            if not readme_extract_cleared:
+                print(
+                    f"Expection caught while running tests, cleaning up {clib_path}..",
+                    end="",
+                )
+                clearing_message = True
+            raise
+        finally:
+            if not readme_extract_cleared:
+                os.remove(clib_path)
+                if clearing_message:
+                    print(" done.")
+            readme_extract_cleared = True
 
 
 if __name__ == "__main__":
@@ -52,5 +67,14 @@ if __name__ == "__main__":
     dir = Path(__file__).parent
 
     # Crawl doctests first.
-    if not pytest.main(["--doctest-modules", "-x", str(dir), "-s"]):
+    if not pytest.main(
+        [
+            "--doctest-modules",
+            "-x",
+            str(dir),
+            "-s",
+            "--ignore",
+            Path(dir, "tests/meta"), # Avoid recursing there.
+        ]
+    ):
         run_source_tests(dir)

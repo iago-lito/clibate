@@ -1,0 +1,31 @@
+# In the general testing context of `broken_specs`.
+
+# Only work on this file.
+edit* (specs/main.clib):
+    REPLACE '# (include \(edit_PREFIX\):)' BY \1
+
+test: Missing prefix to prepend.
+edit (specs/edit_PREFIX.clib):
+    DIFF  "PREFIX (--)     :a # Insert extra prefix."
+    ~     "PREFIX          :a # Insert extra prefix."
+failure:: EOE
+    Clibate parsing error:
+    Missing parenthesized prefix pattern(s) for PREFIX instruction. <edit_PREFIX:35:17>
+    <TEST_FOLDER>/specs/edit_PREFIX.clib
+    included from <TEST_FOLDER>/specs/main.clib:9:1
+EOE
+
+test: Missing prefix to remove.
+edit (specs/edit_PREFIX.clib):
+    DIFF  "UNPREF  ALL (:) a # Loose indent."
+    ~     "UNPREF  ALL     a # Loose indent."
+failure:: EOE
+    Clibate parsing error:
+    Missing parenthesized prefix pattern to remove for UNPREF instruction. <edit_PREFIX:24:17>
+    <TEST_FOLDER>/specs/edit_PREFIX.clib
+    included from <TEST_FOLDER>/specs/main.clib:9:1
+EOE
+
+# Silent file again to speedup subsequent tests.
+edit* (specs/main.clib):
+    REPLACE '(include \(edit_PREFIX\):)' BY r'# \1'

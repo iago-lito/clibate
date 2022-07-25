@@ -119,7 +119,7 @@ edit (main.awk):
 success:    A: 26
 
 test: Alternately, modify the command.
-command: cat input_file.csv | awk -f main.awk | sed 's/:/ is /'
+command: cat input_file.csv | awk -f main.awk | sed 's/: / is /'
 success: A+B+C is 26
 
 # Writing integrated tests for CLI programs has barely been this easy, right?

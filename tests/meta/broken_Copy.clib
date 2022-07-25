@@ -1,0 +1,56 @@
+# In the general testing context of `broken_specs`.
+
+# Only work on this file.
+edit* (specs/main.clib):
+    REPLACE '# (include \(DIFF_awk\):)' BY \1
+
+test: Missing file to copy.
+edit (specs/DIFF_awk.clib):
+    DIFF copy: dummy_data -> input_file
+    ~    copy: notafile -> input_file
+failure:: EOE
+    Error during clibate tests run:
+    Could not find file 'notafile' in input folder <TEST_FOLDER>/input. <DIFF_awk:7:6>
+    <TEST_FOLDER>/specs/DIFF_awk.clib
+    included from <TEST_FOLDER>/specs/main.clib:7:1
+EOE
+
+test: File to copy not specified.
+edit (specs/DIFF_awk.clib):
+    DIFF copy: dummy_data -> input_file
+    ~    copy: -> input_file
+failure:: EOE
+    Clibate parsing error:
+    Missing source filename before '->' arrow in copy line. <DIFF_awk:7:7>
+    <TEST_FOLDER>/specs/DIFF_awk.clib
+    included from <TEST_FOLDER>/specs/main.clib:7:1
+EOE
+
+test: Missing destination to copy.
+edit (specs/DIFF_awk.clib):
+    DIFF copy: dummy_data -> input_file
+    ~    copy: dummy_data -> notafolder/input_file
+failure:: EOE
+    Error during clibate tests run:
+    Could not copy file 'dummy_data' to 'notafolder/input_file'.
+    (  '<TEST_FOLDER>/input/dummy_data'
+    to '<TEST_FOLDER>/test_set/notafolder/input_file')
+    [Errno 2] No such file or directory: '<TEST_FOLDER>/test_set/notafolder/input_file' <DIFF_awk:7:6>
+    <TEST_FOLDER>/specs/DIFF_awk.clib
+    included from <TEST_FOLDER>/specs/main.clib:7:1
+EOE
+
+test: Destination to copy not specified.
+edit (specs/DIFF_awk.clib):
+    DIFF copy: dummy_data -> input_file
+    ~    copy: dummy_data ->
+failure:: EOE
+    Clibate parsing error:
+    Missing expected data: 'target filename'. <DIFF_awk:7:20>
+    <TEST_FOLDER>/specs/DIFF_awk.clib
+    included from <TEST_FOLDER>/specs/main.clib:7:1
+EOE
+
+# Silent file again to speedup subsequent tests.
+edit* (specs/main.clib):
+    REPLACE '(include \(DIFF_awk\):)' BY r'# \1'

@@ -31,7 +31,7 @@ class ExitCodeChecker(Checker):
         self.code = code
         self.context = context
 
-    def check(self, code, _, __):
+    def check(self, _rn, code, _, __):
 
         if self.code == "+":
             if code == 0:

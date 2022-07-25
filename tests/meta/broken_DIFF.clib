@@ -1,0 +1,141 @@
+# In the general testing context of `broken_specs`.
+
+# Only work on this file.
+edit* (specs/main.clib):
+    REPLACE '# (include \(DIFF_awk\):)' BY \1
+
+test: File to edit not specified.
+edit (specs/DIFF_awk.clib):
+    DIFF edit (main.awk):
+    ~    edit:
+failure:: EOE
+    Clibate parsing error:
+    Missing opening parenthesis. <DIFF_awk:28:5>
+    <TEST_FOLDER>/specs/DIFF_awk.clib
+    included from <TEST_FOLDER>/specs/main.clib:7:1
+EOE
+
+test: Invalid edit instruction keyword.
+edit (specs/DIFF_awk.clib):
+    DIFF 'DIFF chain = $1'
+    ~    'VIFF chain = $1'
+failure:: EOE
+    Clibate parsing error:
+    No readers matching input. <DIFF_awk:29:1>
+    <TEST_FOLDER>/specs/DIFF_awk.clib
+    included from <TEST_FOLDER>/specs/main.clib:7:1
+EOE
+
+test: Diff line does not match.
+edit (specs/DIFF_awk.clib):
+    DIFF 'DIFF chain = $1'
+    ~    'DIFF vain = $1'
+failure:: EOE
+    Error during clibate tests run:
+    Could not match line 'vain = $1'. <DIFF_awk:29:10>
+    <TEST_FOLDER>/specs/DIFF_awk.clib
+    included from <TEST_FOLDER>/specs/main.clib:7:1
+EOE
+
+test: Missing diff tilde.
+edit (specs/DIFF_awk.clib):
+    DIFF '~    chain = $1 $1 $1'
+    ~    '     chain = $1 $1 $1'
+failure:: EOE
+    Clibate parsing error:
+    Missing introducing tilde '~' on second diff line. <DIFF_awk:30:1>
+    <TEST_FOLDER>/specs/DIFF_awk.clib
+    included from <TEST_FOLDER>/specs/main.clib:7:1
+EOE
+
+test: Invalid quoting (data after).
+edit (specs/DIFF_awk.clib):
+    DIFF '~    chain = $1 $1 $1'
+    ~    '~    "chain" = $1 $1 $1'
+failure:: EOE
+    Clibate parsing error:
+    Unexpected data after end of line: '= $1 $1 $1'. <DIFF_awk:30:18>
+    <TEST_FOLDER>/specs/DIFF_awk.clib
+    included from <TEST_FOLDER>/specs/main.clib:7:1
+EOE
+
+test: Invalid quoting (data before).
+edit (specs/DIFF_awk.clib):
+    DIFF '~    chain = $1 $1 $1'
+    ~    '~    chain "=" $1 $1 $1'
+failure:: EOE
+    Clibate parsing error:
+    Unexpected data found before string: 'chain'. <DIFF_awk:30:10>
+    <TEST_FOLDER>/specs/DIFF_awk.clib
+    included from <TEST_FOLDER>/specs/main.clib:7:1
+EOE
+
+test: Invalid match prefix: missing opening parenthesis.
+edit (specs/DIFF_awk.clib):
+    DIFF """DIFF (8) 'chain = chain "-" $1'"""
+    ~    """DIFF  8) 'chain = chain "-" $1'"""
+failure:: EOE
+    Clibate parsing error:
+    Unexpected data found before string: '8)'. <DIFF_awk:57:11>
+    <TEST_FOLDER>/specs/DIFF_awk.clib
+    included from <TEST_FOLDER>/specs/main.clib:7:1
+EOE
+
+test: Invalid match prefix: missing closing parenthesis.
+edit (specs/DIFF_awk.clib):
+    DIFF """DIFF (8) 'chain = chain "-" $1'"""
+    ~    """DIFF (8  'chain = chain "-" $1'"""
+failure:: EOE
+    Clibate parsing error:
+    Missing comma in tuple or unmatched parenthesis. <DIFF_awk:57:10>
+    <TEST_FOLDER>/specs/DIFF_awk.clib
+    included from <TEST_FOLDER>/specs/main.clib:7:1
+EOE
+
+test: Invalid match prefix: two values.
+edit (specs/DIFF_awk.clib):
+    DIFF """DIFF (8) 'chain = chain "-" $1'"""
+    ~    """DIFF (8,4) 'chain = chain "-" $1'"""
+failure:: EOE
+    Clibate parsing error:
+    Expected 1 value in tuple, found 2 instead: ('8', '4'). <DIFF_awk:57:14>
+    <TEST_FOLDER>/specs/DIFF_awk.clib
+    included from <TEST_FOLDER>/specs/main.clib:7:1
+EOE
+
+test: Invalid replace prefix: missing opening parenthesis.
+edit (specs/DIFF_awk.clib):
+    DIFF  """~    (#) 'chain = chain "+" $1'"""
+    ~     """~     -) 'chain = chain "+" $1'""" # With '#)', it's a commented line.
+failure:: EOE
+    Clibate parsing error:
+    Unexpected data found before string: '-)'. <DIFF_awk:72:11>
+    <TEST_FOLDER>/specs/DIFF_awk.clib
+    included from <TEST_FOLDER>/specs/main.clib:7:1
+EOE
+
+test: Invalid replace prefix: missing closing parenthesis.
+edit (specs/DIFF_awk.clib):
+    DIFF  """~    (#) 'chain = chain "+" $1'"""
+    ~     """~    (#  'chain = chain "+" $1'"""
+failure:: EOE
+    Clibate parsing error:
+    Missing comma in tuple or unmatched parenthesis. <DIFF_awk:72:10>
+    <TEST_FOLDER>/specs/DIFF_awk.clib
+    included from <TEST_FOLDER>/specs/main.clib:7:1
+EOE
+
+test: Invalid replace prefix: two values.
+edit (specs/DIFF_awk.clib):
+    DIFF  """~    (#) 'chain = chain "+" $1'"""
+    ~     """~    (#,#) 'chain = chain "+" $1'"""
+failure:: EOE
+    Clibate parsing error:
+    Expected either 0 or 1 value in tuple, found 2 instead: ('#', '#'). <DIFF_awk:72:14>
+    <TEST_FOLDER>/specs/DIFF_awk.clib
+    included from <TEST_FOLDER>/specs/main.clib:7:1
+EOE
+
+# Silent file again to speedup subsequent tests.
+edit* (specs/main.clib):
+    REPLACE '(include \(DIFF_awk\):)' BY r'# \1'

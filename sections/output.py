@@ -15,6 +15,14 @@
     stdout::* # Expect exactly no output.
     # (or 'stderr::')
 
+
+Even with the 'exact' mode, differences are tolerated with actual output:
+    - Special tokens are expanded in expected output:
+        - <TEST_FOLDER> expands to actual path to current test folder.
+        - <INPUT_FOLDER> expands to actual path to current input folder.
+        ⇒ TODO: allow escaping these token by setting it within this section.
+    - terminal escape codes are removed from actual output.
+    ⇒ TODO: allow keeping them.
 """
 
 from actor import Actor
@@ -23,6 +31,7 @@ from exceptions import ParseError, SourceError, delineate_string
 from lexer import Lexer
 from reader import Reader, LinesAutomaton
 
+import re
 
 OUTPUT_CHANNELS = ("stdout", "stderr")
 
@@ -33,6 +42,25 @@ def check_output_channel(channel):
             f"Invalid output channel name: {repr(channel)}. "
             f"Valid names: {', '.join(OUTPUT_CHANNELS)}."
         )
+
+
+def expand(runner, expected_output) -> str:
+    """Resolve <TEST_FOLDER> tokens. Hardcoded for now."""
+    test_folder = str(runner.test_file_path(""))
+    input_folder = str(runner.input_file_path(""))
+    result = expected_output
+    result = result.replace("<TEST_FOLDER>", test_folder)
+    result = result.replace("<INPUT_FOLDER>", input_folder)
+    return result
+
+
+# Attempt to capture possible terminal escape codes.
+escapes = re.compile(r"\x1B\[([0-9]{1,3}(;[0-9]{1,2})?)?[mGK]")
+
+
+def unescape(output) -> str:
+    """Remove escape codes from the string."""
+    return escapes.sub("", output)
 
 
 class OutputChecker(Checker):
@@ -47,7 +75,7 @@ class OutputChecker(Checker):
 class EmptyOutput(OutputChecker):
     """This degenerated checker expects no output."""
 
-    def check(self, _, stdout, stderr):
+    def check(self, rn, _, stdout, stderr):
         output = eval(self.channel).decode("utf-8")
         if not output:
             return None
@@ -61,16 +89,18 @@ class ExactOutput(OutputChecker):
         super().__init__(*args, **kwargs)
         self.expected_output = output
 
-    def check(self, _, stdout, stderr):
+    def check(self, rn, _, stdout, stderr):
         output = eval(self.channel).decode("utf-8")
-        if output == self.expected_output:
+        output, eout = unescape(output), output # Keep one escaped version for message.
+        expected_output = expand(rn, self.expected_output)
+        if output == expected_output:
             return None
         # Find unambiguous markers to display the result.
-        expected = delineate_string(self.expected_output)
+        expected = delineate_string(expected_output)
         if not output:
             actual = "found nothing instead."
         else:
-            actual = delineate_string(output)
+            actual = delineate_string(eout)
             actual = f"found instead:\n{actual}"
         return f"Expected to find on {self.channel}:\n{expected}\n{actual}\n"
 
@@ -82,16 +112,18 @@ class OutputSubstring(OutputChecker):
         super().__init__(*args, **kwargs)
         self.needle = needle
 
-    def check(self, _, stdout, stderr):
+    def check(self, rn, _, stdout, stderr):
         hay = eval(self.channel).decode("utf-8")
+        hay, ehay = unescape(hay), hay # Keep one escaped version for error message.
+        needle = expand(rn, self.needle)
         # Normalize.
-        haystack, needle = (" ".join(s.split()) for s in (hay, self.needle))
+        haystack, needle = (" ".join(s.split()) for s in (hay, needle))
         if needle in haystack:
             return None
         if not hay:
             actual = "found nothing instead."
         else:
-            actual = f"found instead:\n{hay}"
+            actual = f"found instead:\n{ehay}"
         return f"Expected to find on {self.channel}:\n{needle}\n{actual}"
 
 

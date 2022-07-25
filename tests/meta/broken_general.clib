@@ -1,0 +1,146 @@
+# In the general testing context of `broken_specs`.
+
+test: Invalid section name.
+edit (specs/main.clib):
+    REPLACE include BY NotASection
+failure:: EOE
+    Clibate parsing error:
+    No readers matching input. <specs/main.clib:4:1>
+    <TEST_FOLDER>/specs/main.clib
+EOE
+
+test: Missing include file.
+edit (specs/main.clib):
+    DIFF include (basic_awk_from_README): Check basic behaviour of clibate with awk.
+    ~    include: Check basic behaviour of clibate with awk.
+failure:: EOE
+    Clibate parsing error:
+    Missing opening parenthesis. <specs/main.clib:4:8>
+    <TEST_FOLDER>/specs/main.clib
+EOE
+
+test: Invalid tuple: no closing parenthesis.
+edit (specs/main.clib):
+    DIFF include (basic_awk_from_README): Check basic behaviour of clibate with awk.
+    ~    include (basic_awk_from_README : Check basic behaviour of clibate with awk.
+failure:: EOE
+    Clibate parsing error:
+    Missing comma in tuple or unmatched parenthesis. <specs/main.clib:4:9>
+    <TEST_FOLDER>/specs/main.clib
+EOE
+
+test: Invalid tuple quoting (data before).
+edit (specs/main.clib):
+    DIFF "include (basic_awk_from_README): Check basic behaviour of clibate with awk."
+    ~    "include (basic_aw'k_'from_README): Check basic behaviour of clibate with awk."
+failure:: EOE
+    Clibate parsing error:
+    Unexpected data found before string: 'basic_aw'. <specs/main.clib:4:10>
+    <TEST_FOLDER>/specs/main.clib
+EOE
+
+test: Invalid tuple quoting (data after).
+edit (specs/main.clib):
+    DIFF "include (basic_awk_from_README): Check basic behaviour of clibate with awk."
+    ~    "include ('ba'sic_awk_from_README): Check basic behaviour of clibate with awk."
+failure:: EOE
+    Clibate parsing error:
+    Unexpected data found between string and ')': 'sic_awk_from_README'. <specs/main.clib:4:14>
+    <TEST_FOLDER>/specs/main.clib
+EOE
+
+test: Invalid tuple: not enough values while expecting 1 or 2.
+edit (specs/main.clib):
+    DIFF include (basic_awk_from_README): Check basic behaviour of clibate with awk.
+    ~    include (): Check basic behaviour of clibate with awk.
+failure:: EOE
+    Clibate parsing error:
+    Expected either 1 or 2 values in tuple, found 0 instead: (). <specs/main.clib:4:10>
+    <TEST_FOLDER>/specs/main.clib
+EOE
+
+test: Invalid tuple: not enough values while expecting 1.
+edit (specs/DIFF_awk.clib):
+    DIFF file (main.awk):: EOF
+    ~    file ():: EOF
+failure:: EOE
+    Clibate parsing error:
+    Expected 1 value in tuple, found 0 instead: (). <DIFF_awk:8:7>
+    <TEST_FOLDER>/specs/DIFF_awk.clib
+    included from <TEST_FOLDER>/specs/main.clib:7:1
+EOE
+
+test: Invalid tuple: too many values while expecting 1 or 2.
+edit (specs/main.clib):
+    DIFF include (basic_awk_from_README): Check basic behaviour of clibate with awk.
+    ~    include (basic,awk,from_README): Check basic behaviour of clibate with awk.
+failure:: EOE
+    Clibate parsing error:
+    Expected either 1 or 2 values in tuple, found 3 instead: ('basic', 'awk', 'from_README'). <specs/main.clib:4:31>
+    <TEST_FOLDER>/specs/main.clib
+EOE
+
+test: Invalid tuple: too many values while expecting 1.
+edit (specs/DIFF_awk.clib):
+    DIFF file (main.awk):: EOF
+    ~    file (main,awk):: EOF
+failure:: EOE
+    Clibate parsing error:
+    Expected 1 value in tuple, found 2 instead: ('main', 'awk'). <DIFF_awk:8:15>
+    <TEST_FOLDER>/specs/DIFF_awk.clib
+    included from <TEST_FOLDER>/specs/main.clib:7:1
+EOE
+
+test: Missing included file.
+edit (specs/main.clib):
+    DIFF include (basic_awk_from_README): Check basic behaviour of clibate with awk.
+    ~    include (notafile): Check basic behaviour of clibate with awk.
+failure:: EOE
+    Error during clibate tests run:
+    Missing file to include: notafile. <specs/main.clib:4:1>
+    <TEST_FOLDER>/specs/main.clib
+EOE
+
+test: Cannot include a folder.
+edit (specs/main.clib):
+    DIFF include (basic_awk_from_README): Check basic behaviour of clibate with awk.
+    ~    include (.): Check basic behaviour of clibate with awk.
+failure:: EOE
+    Error during clibate tests run:
+    The file to include is a directory: .. <specs/main.clib:4:1>
+    <TEST_FOLDER>/specs/main.clib
+EOE
+
+test: Circular inclusion.
+edit (specs/DIFF_awk.clib):
+    INSERT + include (main.clib): Loopback!
+             command: cat input_file | awk -f main.awk
+failure:: EOE
+    Error during clibate tests run:
+    Circular inclusion detected:
+    'DIFF_awk' includes 'main.clib' again. <DIFF_awk:6:1>
+    <TEST_FOLDER>/specs/DIFF_awk.clib
+    included from <TEST_FOLDER>/specs/main.clib:7:1
+EOE
+
+test: Missing colon.
+edit (specs/main.clib):
+    DIFF include (basic_awk_from_README): Check basic behaviour of clibate with awk.
+    ~    include (basic_awk_from_README)  Check basic behaviour of clibate with awk.
+failure:: EOE
+    Clibate parsing error:
+    Missing colon ':' to introduce Include section. <specs/main.clib:4:32>
+    <TEST_FOLDER>/specs/main.clib
+EOE
+
+test: Missing test name.
+edit (specs/DIFF_awk.clib):
+    DIFF test: First edit is temporary.
+    ~    test:
+failure:: EOE
+    Clibate parsing error:
+    Missing expected data: 'test name'. <DIFF_awk:27:6>
+    <TEST_FOLDER>/specs/DIFF_awk.clib
+    included from <TEST_FOLDER>/specs/main.clib:7:1
+EOE
+

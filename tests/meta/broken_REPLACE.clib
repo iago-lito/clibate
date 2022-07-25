@@ -1,0 +1,112 @@
+# In the general testing context of `broken_specs`.
+
+# Only work on this file.
+edit* (specs/main.clib):
+    REPLACE '# (include \(edit_REPLACE\):)' BY \1
+
+test: Missing match pattern.
+edit (specs/edit_REPLACE.clib):
+    DIFF  "REPLACE thing BY song"
+    ~     "REPLACE       BY song"
+failure:: EOE
+    Clibate parsing error:
+    Missing match pattern before 'BY' keyword. <edit_REPLACE:23:19>
+    <TEST_FOLDER>/specs/edit_REPLACE.clib
+    included from <TEST_FOLDER>/specs/main.clib:10:1
+EOE
+
+test: Missing 'BY' keyword (single line).
+edit (specs/edit_REPLACE.clib):
+    DIFF  "REPLACE thing BY song"
+    ~     "REPLACE thing song"
+failure:: EOE
+    Clibate parsing error:
+    Missing 'BY' keyword or '/' line continuation symbol for REPLACE instruction. <edit_REPLACE:24:1>
+    <TEST_FOLDER>/specs/edit_REPLACE.clib
+    included from <TEST_FOLDER>/specs/main.clib:10:1
+EOE
+
+test: Missing replace pattern.
+edit (specs/edit_REPLACE.clib):
+    DIFF  "REPLACE thing BY song"
+    ~     "REPLACE thing BY     "
+failure:: EOE
+    Clibate parsing error:
+    Missing expected data: 'replace pattern'. <edit_REPLACE:23:26>
+    <TEST_FOLDER>/specs/edit_REPLACE.clib
+    included from <TEST_FOLDER>/specs/main.clib:10:1
+EOE
+
+test: Double 'BY' keyword.
+edit (specs/edit_REPLACE.clib):
+    DIFF  "REPLACE thing BY song"
+    ~     "REPLACE thing BY song BY more"
+failure:: EOE
+    Clibate parsing error:
+    Ambiguous raw REPLACE line with more than 1 occurence of the 'BY' keyword. Consider quoting match and/or replace pattern(s). <edit_REPLACE:23:13>
+    <TEST_FOLDER>/specs/edit_REPLACE.clib
+    included from <TEST_FOLDER>/specs/main.clib:10:1
+EOE
+
+test: Invalid match pattern.
+edit (specs/edit_REPLACE.clib):
+    DIFF  r"REPLACE ALL \bthing\b BY song"
+    ~     r"REPLACE ALL \bthing\  BY song"
+failure:: EOE
+    Clibate parsing error:
+    Could not compile regex pattern /\bthing\/:
+    error('bad escape (end of pattern) at position 7') <edit_REPLACE:45:17>
+    <TEST_FOLDER>/specs/edit_REPLACE.clib
+    included from <TEST_FOLDER>/specs/main.clib:10:1
+EOE
+
+test: Invalid replace pattern.
+edit (specs/edit_REPLACE.clib):
+    DIFF  r"REPLACE ALL \bthing\b BY song"
+    ~     r"REPLACE ALL \bthing\b BY s\1ng"
+failure:: EOE
+    Clibate parsing error:
+    Could not use replace pattern /s\1ng/:
+    error('invalid group reference 1 at position 2') <edit_REPLACE:45:30>
+    <TEST_FOLDER>/specs/edit_REPLACE.clib
+    included from <TEST_FOLDER>/specs/main.clib:10:1
+EOE
+
+test: Missing 'BY' keyword (multiple lines).
+edit (specs/edit_REPLACE.clib):
+    DIFF  'BY      "# <3 BYEBYE <3 #"'
+    ~     '        "# <3 BYEBYE <3 #"'
+failure:: EOE
+    Clibate parsing error:
+    Missing 'BY' keyword or '/' line continuation symbol for REPLACE instruction. <edit_REPLACE:101:1>
+    <TEST_FOLDER>/specs/edit_REPLACE.clib
+    included from <TEST_FOLDER>/specs/main.clib:10:1
+EOE
+
+test: Missing '/' continuation symbol for multiline match pattern.
+edit (specs/edit_REPLACE.clib):
+    DIFF  "/   ' ([a-z]+)'"
+    ~     "    ' ([a-z]+)'"
+failure:: EOE
+    Clibate parsing error:
+    Missing 'BY' keyword or '/' line continuation symbol for REPLACE instruction. <edit_REPLACE:121:1>
+    <TEST_FOLDER>/specs/edit_REPLACE.clib
+    included from <TEST_FOLDER>/specs/main.clib:10:1
+EOE
+
+test: Missing '/' continuation symbol for multiline replace pattern.
+edit (specs/edit_REPLACE.clib):
+    DIFF  r"/   \1\1"
+    ~     r"    \1\1"
+# Parser considers that the BY lines are over
+# and seeks another instruction/section.
+failure:: EOE
+    Clibate parsing error:
+    No readers matching input. <edit_REPLACE:136:1>
+    <TEST_FOLDER>/specs/edit_REPLACE.clib
+    included from <TEST_FOLDER>/specs/main.clib:10:1
+EOE
+
+# Silent file again to speedup subsequent tests.
+edit* (specs/main.clib):
+    REPLACE '(include \(edit_REPLACE\):)' BY r'# \1'

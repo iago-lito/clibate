@@ -1,0 +1,109 @@
+# In the general testing context of `broken_specs`.
+
+# Only work on this file.
+edit* (specs/main.clib):
+    REPLACE '# (include \(edit_INSERT\):)' BY \1
+
+test: Wrong BELOW keyword.
+edit (specs/edit_INSERT.clib):
+    DIFF "INSERT BELOW :a"
+    ~    "INSERT VELOW :a"
+failure:: EOE # Interpreted as part of the line to match.
+    Error during clibate tests run:
+    Could not match line 'VELOW :a'. <edit_INSERT:24:8>
+    <TEST_FOLDER>/specs/edit_INSERT.clib
+    included from <TEST_FOLDER>/specs/main.clib:8:1
+EOE
+
+test: Missing '+' symbol before line to insert below.
+edit (specs/edit_INSERT.clib):
+    DIFF "+   X"
+    ~    "    X"
+failure:: EOE
+    Clibate parsing error:
+    Found no lines to INSERT BELOW (marked with a '+' symbol). <edit_INSERT:25:1>
+    <TEST_FOLDER>/specs/edit_INSERT.clib
+    included from <TEST_FOLDER>/specs/main.clib:8:1
+EOE
+
+test: Missing '+' symbol before line to insert above.
+edit (specs/edit_INSERT.clib):
+    DIFF "INSERT ABOVE +  X"
+    ~    "INSERT ABOVE    X"
+failure:: EOE
+    Clibate parsing error:
+    Missing '+' symbol to introduce lines to INSERT ABOVE the match line. <edit_INSERT:133:17>
+    <TEST_FOLDER>/specs/edit_INSERT.clib
+    included from <TEST_FOLDER>/specs/main.clib:8:1
+EOE
+
+test: Meaningless double star '**'.
+edit (specs/edit_INSERT.clib):
+    DIFF  "+ *     V  # Drop it."
+    ~     "+ **    V  # Drop it."
+failure:: EOE
+    Clibate parsing error:
+    Double replace star mark '**' is meaningless without matching both variable indent (I) and a fixed prefix (P). <edit_INSERT:51:10>
+    <TEST_FOLDER>/specs/edit_INSERT.clib
+    included from <TEST_FOLDER>/specs/main.clib:8:1
+EOE
+
+test: Meaningless simple star '*'.
+edit (specs/edit_INSERT.clib):
+    UNPREF (#1) "+ *     X  # For clibate's meta-testing to check expected error.."
+failure:: EOE
+    Clibate parsing error:
+    Replace star mark '*' is redundant when matching with no indent (I) and no prefix (P). <edit_INSERT:92:8>
+    <TEST_FOLDER>/specs/edit_INSERT.clib
+    included from <TEST_FOLDER>/specs/main.clib:8:1
+EOE
+
+test: Missing match pattern with '/' symbol on.
+edit (specs/edit_INSERT.clib):
+    DIFF  "INSERT/ ALL (\s+:) a"
+    ~     "INSERT/ ALL        a"
+failure:: EOE
+    Clibate parsing error:
+    Requested regex prefix with '/' mark (edit_INSERT:246:7) but no parenthesized '(pattern)' was provided. <edit_INSERT:246:20>
+    <TEST_FOLDER>/specs/edit_INSERT.clib
+    included from <TEST_FOLDER>/specs/main.clib:8:1
+EOE
+
+test: Missing replace pattern with '/' symbol on.
+edit (specs/edit_INSERT.clib):
+    DIFF  "+ ()     X"
+    ~     "+        X"
+failure:: EOE
+    Clibate parsing error:
+    Requested regex prefix with '/' mark (edit_INSERT:246:7) but no parenthesized '(replacement)' pattern was provided. <edit_INSERT:247:20>
+    <TEST_FOLDER>/specs/edit_INSERT.clib
+    included from <TEST_FOLDER>/specs/main.clib:8:1
+EOE
+
+test: Invalid match pattern.
+edit (specs/edit_INSERT.clib):
+    DIFF  "INSERT/ ALL (\s+:) a"
+    ~     "INSERT/ ALL (\s[:) a"
+failure:: EOE
+    Clibate parsing error:
+    Could not compile regex pattern /\s[:/:
+    error('unterminated character set at position 2') <edit_INSERT:246:13>
+    <TEST_FOLDER>/specs/edit_INSERT.clib
+    included from <TEST_FOLDER>/specs/main.clib:8:1
+EOE
+
+test: Invalid replace pattern.
+edit (specs/edit_INSERT.clib):
+    DIFF  r"+ ()     X"
+    ~     r"+ (\4)   X"
+failure:: EOE
+    Clibate parsing error:
+    Could not use replace pattern /\4/:
+    error('invalid group reference 4 at position 1') <edit_INSERT:247:13>
+    <TEST_FOLDER>/specs/edit_INSERT.clib
+    included from <TEST_FOLDER>/specs/main.clib:8:1
+EOE
+
+# Silent file again to speedup subsequent tests.
+edit* (specs/main.clib):
+    REPLACE '(include \(edit_INSERT\):)' BY r'# \1'

@@ -23,6 +23,6 @@ class Checker(object):
         """Trivial default."""
         self.context = context
 
-    def check(self, code, stdout, stderr) -> None or str:
+    def check(self, test_runner, code, stdout, stderr) -> None or str:
         """Verify that output code is conforming, otherwise produce an error report."""
         return None

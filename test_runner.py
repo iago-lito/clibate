@@ -153,6 +153,7 @@ class TestRunner(object):
         and the reports are not all empty.
         """
         exception = True
+        original_folder = os.getcwd()
         try:
             self.prepare()
             for inst in instructions:
@@ -170,6 +171,7 @@ class TestRunner(object):
             exception = False
         finally:
             self.cleanup()
+            os.chdir(original_folder)
             if exception:
                 print(" done.")
 
@@ -204,17 +206,32 @@ class TestRunner(object):
 
     def copy_from_input(self, source, target):
         """Bring file from input to test folder, erasing existing ones."""
-        rsource = Path(self.input_folder, source).resolve()
+        # Guard against symlink resolution.
         rtarget = Path(self.test_folder, target).resolve()
+        fsource = Path(self.input_folder, source)  # Do not resolve symlinks yet.
+        rsource = fsource.resolve()
+        same = source == target
+        link = False
+        dir = False
         try:
+            if fsource.is_symlink():
+                link = True
+                os.symlink(rsource, rtarget)
+                return
             if rsource.is_dir():
+                dir = True
                 shu.copytree(rsource, rtarget)
-            else:
-                shu.copy2(rsource, rtarget)
+                return
+            shu.copy2(rsource, rtarget)
         except Exception as e:
+            file = "directory" if dir else ("link" if link else "file")
+            src = Path(fsource.parent.resolve(), fsource.name) if link else rsource
+            to = "" if same else f" to {repr(str(target))}"
+            pto = "" if same else "  "
+            tto = "" if same else f"\nto {c.grey}{repr(str(rtarget))}{c.reset}"
             raise TestRunError(
-                f"Could not copy file {source} to {target}. "
-                f"  ({rsource}\nto {rtarget})"
+                f"Could not copy file {repr(str(source))}{to}."
+                f"\n({pto}{c.grey}{repr(str(src))}{c.reset}{tto})\n" + str(e)
             ) from e
 
     def create_file(self, name, content):
@@ -288,7 +305,7 @@ class TestRunner(object):
         else:
             context = run_context
         for checker in self.checkers:
-            r = checker.check(self.exitcode, self.stdout, self.stderr)
+            r = checker.check(self, self.exitcode, self.stdout, self.stderr)
             if r is not None:
                 success = False
             reports[checker] = r
