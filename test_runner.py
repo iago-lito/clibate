@@ -207,12 +207,15 @@ class TestRunner(object):
         rsource = Path(self.input_folder, source).resolve()
         rtarget = Path(self.test_folder, target).resolve()
         try:
-            shu.copy2(rsource, rtarget)
+            if rsource.is_dir():
+                shu.copytree(rsource, rtarget)
+            else:
+                shu.copy2(rsource, rtarget)
         except Exception as e:
             raise TestRunError(
                 f"Could not copy file {source} to {target}. "
                 f"  ({rsource}\nto {rtarget})"
-            )
+            ) from e
 
     def create_file(self, name, content):
         """Create file within the test folder (erasing existing ones)."""
