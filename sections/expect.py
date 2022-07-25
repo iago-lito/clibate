@@ -12,11 +12,7 @@ Failure sets up (by default):
     - clear expectations regarding stdout
     - an optional name for the test.
 
-Then they both:
-    - run the test command
-    - check the result
-    - restore all saved files from backups, consuming backups.
-    - produce a log message before the actual TestRunner.report is invoked
+Then, they invoke an implicit RUNTEST.
 
 For example:
 
@@ -102,7 +98,6 @@ class Expect(Actor):
 
         rn.add_checkers(checkers)
         rn.run_test(self.context, self.name)
-        rn.restore_all_files(keep_backup=False)
 
 
 class ExpectReader(Reader):

@@ -314,6 +314,8 @@ class TestRunner(object):
             # Failed test reports are still saved for later by self.run_checks().
             print(f" {c.red}FAIL{c.reset}")
 
+        self.restore_all_files(keep_backup=False)
+
     def report(self) -> bool:
         """Organize all reports into a nice summary.
         Return False if the summary contains failed tests reports.

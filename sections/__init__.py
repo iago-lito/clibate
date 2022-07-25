@@ -22,7 +22,6 @@ def default_readers():
 
 default_readers.types_accesses = tw.dedent(
     """
-    check.Check
     command.Command
     copy.Copy
     edit.Edit
@@ -32,6 +31,7 @@ default_readers.types_accesses = tw.dedent(
     include.Include
     output.Output [('stdout',), ('stderr',)]
     run.Run
+    run_test.RunTest
     test.Test
     """.strip()
 )
