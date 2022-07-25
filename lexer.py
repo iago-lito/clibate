@@ -817,12 +817,13 @@ class Lexer(object):
             )
         return (stop, read, True) if expect_data is None else (stop, read)
 
-    def read_tuple(self, n=[]) -> str or (str,):
+    def read_tuple(self, n=[], optional=False) -> str or (str,) or None:
         r"""Read and consume comma-separated raw or quoted strings within parentheses.
         Compare number of results to expectations (n)
         to raise appropriate error if needed.
         n=[] means any number.
-        Python like unary tuples must end with a comma to not be unpacked.
+        Python-like unary tuples must end with a comma to not be unpacked.
+        If 'optional' is set, return None if no opening parenthesis is found.
         >>> l = Lexer(" (raw read) ")
         >>> l.read_tuple(), l.n_consumed
         ('raw read', 11)
@@ -879,6 +880,9 @@ class Lexer(object):
         exceptions.LexError: Missing opening parenthesis.
         >>> l.n_consumed
         0
+        >>> l.read_tuple(optional=True) # No error in case we were expecting maybe-none.
+        >>> l.n_consumed
+        0
         >>> l = Lexer(" (no closing ")
         >>> l.read_tuple()
         Traceback (most recent call last):
@@ -932,6 +936,8 @@ class Lexer(object):
         opening = lex.lstrip().n_consumed
         if not lex.match("("):
             lex.lstrip()
+            if optional:
+                return None
             lex.error("Missing opening parenthesis.")
         stop = "("
         reads = []
