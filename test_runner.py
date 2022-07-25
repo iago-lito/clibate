@@ -177,17 +177,26 @@ class TestRunner(object):
         exec(
             tw.dedent(
                 f'''
+    def {folder}_file_path(self, filename) -> Path:
+        """Construct valid, absolute, canonicalized path
+        to a file in {folder} folder.
+        """
+        return Path(self.{folder}_folder, filename)
+
     def is_{folder}_file(self, filename) -> bool:
         """Test whether the given file exists in the {folder} folder."""
-        return Path(self.{folder}_folder, filename).exists()
+        return self.{folder}_file_path(filename).exists()
 
-    def check_{folder}_file(self, filename):
-        """Raise if given file does not exist."""
+    def check_{folder}_file(self, filename) -> Path:
+        """Raise if given file does not exist,
+        otherwise, return canonical path to it.
+        """
         if not self.is_{folder}_file(filename):
             raise TestRunError(
                 f"Could not find file {{repr(filename)}} "
                 f"in {folder} folder {{self.{folder}_folder}}."
             )
+        return self.{folder}_file_path(filename)
     '''
             )
         )
