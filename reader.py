@@ -2,6 +2,7 @@ from context import ContextLexer
 from exceptions import ParseError, SourceError, NoSectionMatch
 
 from types import MethodType
+import re
 
 
 class Reader(object):
@@ -57,9 +58,14 @@ class Reader(object):
         """
         if not hasattr(self, "keyword"):
             raise SourceError(f"No 'self.keyword' defined for {type(self).__name__}.")
+        # Add word boundaries to the keyword, unless already an explicit pattern.
+        if type(self.keyword) is re.Pattern:
+            keyword = self.keyword
+        else:
+            keyword = re.compile(r'\b' + self.keyword + r'\b')
         lex = self.lexer
         context = lex.context
-        if not lex.match(self.keyword):
+        if not lex.match(keyword):
             raise NoSectionMatch()
         self.keyword_context = context
 
