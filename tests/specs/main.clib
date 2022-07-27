@@ -8,3 +8,6 @@ include (DIFF_awk): Check basic edit DIFF options on a small awk program.
 include (edit_INSERT): Check edit INSERT paired-lines options.
 include (edit_PREFIX): Check edit PREFIX/UNPREF/REMOVE single-lines options.
 include (edit_REPLACE): Check edit REPLACE options.
+
+# Add live readers.
+include (add_reader): Check basic addition of reader.

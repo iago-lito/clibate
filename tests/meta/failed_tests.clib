@@ -96,3 +96,39 @@ EXITCODE 1
 RUNTEST
 
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+
+# Check failure by a user-defined reader.
+command: clibate/main.py specs/add_reader.clib -i input
+
+success:: New reader works fine. EOO # Redundant with non-meta test.
+  Find OLD keyword with base readers.. PASS
+  Success by the new reader.. PASS
+
+✔ Success: 2 tests run.
+EOO
+
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+
+test: New reader reports test failure.
+edit (specs/add_reader.clib):
+    DIFF command: echo NEW
+    ~    command: echo OLD AGAIN
+stdout:: <EOO>
+  Find OLD keyword with base readers.. PASS
+  Success by the new reader.. FAIL
+<EOO>
+stderr:: EOE
+
+🗙 1 test has failed:
+
+Success by the new reader. <specs/add_reader.clib:12:1>
+<specs/add_reader.clib:11:1>
+No NEW keyword found in output.
+
+2 tests run: 1 success, 1 failure.
+
+EOE
+EXITCODE 1
+RUNTEST
+
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #

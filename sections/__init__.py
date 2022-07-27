@@ -30,6 +30,7 @@ default_readers.types_accesses = tw.dedent(
     file.File
     include.Include
     output.Output [('stdout',), ('stderr',)]
+    readers.Readers
     run.Run
     run_test.RunTest
     test.Test

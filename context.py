@@ -24,7 +24,7 @@ class ParseContext(object):
 
     filename: str  # As input by user.
     filepath: Path  # Canonicalized.
-    readers: Tuple["Reader"]
+    parser: "Parser"
     includer: "ParseContext" = None  # Chain inclusions up to root context.
     linenum: int = 1
     colnum: int = 1
@@ -52,7 +52,7 @@ class ParseContext(object):
 
 
 # Useful for testing.
-MOCK_CONTEXT = ParseContext("<mock_context>", None, [], None)
+MOCK_CONTEXT = ParseContext("<mock_context>", None, None, None)
 
 
 class ContextLexer(object):
@@ -95,7 +95,7 @@ class ContextLexer(object):
         return ParseContext(
             self._base_context.filename,
             self._base_context.filepath,
-            self._base_context.readers,
+            self._base_context.parser,
             self._base_context.includer,
             self._linenum,
             self._colnum,

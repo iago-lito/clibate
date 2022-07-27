@@ -1,0 +1,12 @@
+# Here is how to add a custom reader to the parser.
+
+command: echo OLD
+
+success: Find OLD keyword with base readers.
+    OLD
+
+readers (new_reader.py): + NewReader
+
+command: echo NEW
+new-reader
+RUNTEST: Success by the new reader.

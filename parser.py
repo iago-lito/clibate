@@ -1,5 +1,6 @@
 from context import ParseContext, ContextLexer, EOI
 from exceptions import ParseError, NoSectionMatch
+from parse_editor import ParseEditor
 from reader import LinesAutomaton
 from sections import default_readers
 
@@ -12,7 +13,19 @@ class Parser(object):
     """
 
     def __init__(self, readers=None):
-        self.readers = readers if readers else default_readers()
+        # Get our own list so it cannot mutate from elsewhere.
+        self.readers = list(readers if readers else default_readers())
+        # Instructions collected while parsing.
+        self._collect = []
+
+    def collect(self, parsed_object):
+        """Intercept ParseEditor object to offer them our edition API
+        without passing them to the test runner.
+        """
+        if isinstance(pe := parsed_object, ParseEditor):
+            pe.execute(self)
+        else:
+            self._collect.append(parsed_object)
 
     def find_matching_reader(self, lexer) -> "MatchResult" or None:
         """Consume necessary input
@@ -53,7 +66,7 @@ class Parser(object):
         """Iteratively hand the lexer to readers so they consume it bit by bit."""
 
         # One iteration, one collected object.
-        collect = []
+        self._collect.clear()
         match = None  # Currently being processed.
         while True:
 
@@ -73,7 +86,7 @@ class Parser(object):
 
             if not isinstance(match, LinesAutomaton):
                 # The reader has already produced a valid object.
-                collect.append(match)
+                self.collect(match)
                 if lexer.consumed:
                     break
                 match = None
@@ -84,7 +97,7 @@ class Parser(object):
             automaton = match
             while True:
                 if lexer.consumed:
-                    collect.append(automaton.terminate())
+                    self.collect(automaton.terminate())
                     match = None
                     break
                 match = self.find_matching_reader(lexer)
@@ -97,13 +110,13 @@ class Parser(object):
                     automaton.feed(lexcopy)
                     continue
                 # In case of match, the automaton should be done.
-                collect.append(automaton.terminate())
+                self.collect(automaton.terminate())
                 break
             if not match and lexer.consumed:
                 break
 
         # All input has been parsed.
-        return collect
+        return list(self._collect) # Return a copy so it does not mutate here.
 
     def parse_file(self, filename, path=None, _includer_context=None) -> [object]:
         """Construct a parser to interpret the given file,
@@ -114,7 +127,7 @@ class Parser(object):
         context = ParseContext(
             filename,
             filepath=path if path else Path(filename).resolve(),
-            readers=tuple(self.readers),
+            parser=self,
             includer=_includer_context,
         )
 
@@ -125,3 +138,13 @@ class Parser(object):
         # Spin a lexer and do the job.
         lexer = ContextLexer(input, context)
         return self.parse(lexer)
+
+    def add_readers(self, readers):
+        """Make the parser understand new sections types."""
+        self.readers += readers
+
+    def remove_readers(self, to_remove):
+        """Make the parser forget about some sections types.
+        Readers are removed if to_remove(reader) yields true.
+        """
+        self.readers = [r for r in self.readers if not to_remove(r)]

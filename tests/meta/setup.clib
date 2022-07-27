@@ -92,5 +92,9 @@ Check edit REPLACE options (edit_REPLACE):
   Split match pattern over multiple lines.. PASS
   Split replace pattern over multiple lines.. PASS
 
-✔ Success: 52 tests run.
+Check basic addition of reader (add_reader):
+  Find OLD keyword with base readers.. PASS
+  Success by the new reader.. PASS
+
+✔ Success: 54 tests run.
 EOO

@@ -27,3 +27,4 @@ include (broken_DIFF): Check errors with DIFF instructions.
 include (broken_INSERT): Check errors with INSERT instructions.
 include (broken_PREFIX): Check errors with PREFIX/UNPREF/REMOVE instructions.
 include (broken_REPLACE): Check errors with REPLACE instructions.
+include (broken_readers): Check errors with adding new Readers.

@@ -1,0 +1,95 @@
+# In the general testing context of `broken_specs`.
+
+# Only work on this file.
+edit* (specs/main.clib):
+    REPLACE '# (include \(add_reader\):)' BY \1
+
+
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+
+test: Missing Reader class definition.
+edit (specs/add_reader.clib):
+    DIFF readers (new_reader.py): + NewReader
+    ~    readers                : + NewReader
+failure:: EOE
+    Clibate parsing error:
+    Reader class 'NewReader' not defined. Has the corresponding python file been sourced? <add_reader:8:1>
+    <TEST_FOLDER>/specs/add_reader.clib
+    included from <TEST_FOLDER>/specs/main.clib:13:1
+EOE
+
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+
+test: Missing python file.
+edit (specs/add_reader.clib):
+    DIFF readers (new_reader.py): + NewReader
+    ~    readers (notafile.py)  : + NewReader
+failure:: EOE
+    Clibate parsing error:
+    Could not find reader python file 'notafile.py' ('<TEST_FOLDER>/specs/notafile.py'). <add_reader:8:1>
+    <TEST_FOLDER>/specs/add_reader.clib
+    included from <TEST_FOLDER>/specs/main.clib:13:1
+EOE
+
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+
+test: Removed reader.
+edit (specs/add_reader.clib):
+    INSERT readers (new_reader.py): + NewReader
+    +      readers                : - NewReader
+# No readers recognizes the line, so it's consumed by the 'command:' section.
+failure:: EOE
+
+🗙 1 test has failed:
+
+Success by the new reader. <add_reader:13:1>
+<add_reader:5:1>
+Expected to find on stdout:
+OLD
+found instead:
+NEW new-reader
+
+
+2 tests run: 1 success, 1 failure.
+
+EOE
+
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+
+test: Syntax error in python file.
+edit (specs/new_reader.py):
+    DIFF   class NewChecker(Checker):
+    ~      cls   NewChecker(Checker):
+failure:
+    SyntaxError: invalid syntax
+
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+
+test: Logic error in reader implementation (happy path).
+edit (specs/new_reader.py):
+    # Forget an argument.
+    DIFF   def check(self, _rn, _, stdout, __):
+    ~      def check(self, _1, _2, _3):
+failure: # A python error.
+    TypeError: NewChecker.check() takes 4 positional arguments
+               but 5 were given
+
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+
+test: Logic error in reader implementation (unhappy path).
+edit (specs/new_reader.py):
+    DIFF   return NewChecker(self.keyword_context)
+    ~      return NewChecker(5) # <- not a context.
+# This is only visible if the test fails.
+edit (specs/add_reader.clib):
+    DIFF   command: echo NEW
+    ~      command: echo OLD AGAIN
+failure: # A python error.
+    "AttributeError: 'int' object has no attribute 'linenum'"
+
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+
+
+# Silent file again to speedup subsequent tests.
+edit* (specs/main.clib):
+    REPLACE '(include \(DIFF_awk\):)' BY r'# \1'
