@@ -147,15 +147,21 @@ class Lexer(object):
         pos = self.n_consumed if pos is None else pos
         raise LexError(message, pos - backtrack)
 
-    def lstrip(self, *args) -> "self":
-        """Strip chars from the beginning of input.
-        >>> l = Lexer("  begin").lstrip()
+    def lstrip(self, *args, newline=True) -> "self":
+        r"""Strip chars from the beginning of input.
+        >>> l = Lexer(" \n begin").lstrip()
         >>> l.input, l.n_consumed
-        ('begin', 2)
+        ('begin', 3)
+        >>> l = Lexer(" \n begin").lstrip(newline=False)
+        >>> l.input, l.n_consumed
+        ('\n begin', 1)
         """
-        res = self.input.lstrip(*args)
-        self.n_consumed += len(self.input) - len(res)
-        self.input = res
+        if newline:
+            res = self.input.lstrip(*args)
+            self.n_consumed += len(self.input) - len(res)
+            self.input = res
+        else:
+            self.match(re.compile(r'[^\S\r\n]*'), consume=True)
         return self
 
     def match(self, token, consume=True) -> bool:

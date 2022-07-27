@@ -132,7 +132,7 @@ class ExpectReader(Reader):
         # Understand global line type.
         c = self.check_colon_type()
 
-        context = self.lstrip().context
+        context = self.lstrip(newline=False).context
         name, star, raw = self.read_name_and_star()
 
         channel = ["stdout", "stderr"][self.failure]
