@@ -404,12 +404,25 @@ class EditReader(Reader):
         while not self.lexer.consumed:
             # One copy to use in case we need to backtrack and return to main Parser.
             safe_lex = self.lexer.copy()
+            safe_lex._lexer.input[:30]
             # One copy to hand out to our dedicated automaton.
             line_lex = self.lexer.copy()
             _, line = self.lexer.read_until_either(["\n", EOI])
             line_lex._lexer.input = line  # Shorten to line only.
+            line_lex._lexer.input[:30]
             try:
-                aut.feed(line_lex)
+                # If one instruction does not match,
+                # maybe it's another instruction beginning,
+                # so try once again before forwarding up to the parser.
+                for i in range(2):
+                    try:
+                        aut.feed(line_lex)
+                    except NoSectionMatch:
+                        if i != 0:
+                            raise
+                        # Restore and try again.
+                        line_lex.become(self.lexer)
+                        line_lex._lexer.input = line
             except NoSectionMatch:
                 # This line maybe wasn't ours:
                 # backtrack and refer to main Parser instead.
@@ -842,6 +855,7 @@ class EditAutomaton(LinesAutomaton):
             if f is None:
                 # Done with this instruction, leave this line to the next sections.
                 self.terminate_replace_instruction()
+                self.state = None
                 raise NoSectionMatch()
             if f == "BY":
                 if data.by:

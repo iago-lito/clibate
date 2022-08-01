@@ -91,10 +91,11 @@ Check edit REPLACE options (edit_REPLACE):
   Patterns matches file over multiple lines.. PASS
   Split match pattern over multiple lines.. PASS
   Split replace pattern over multiple lines.. PASS
+  Other instructions after replace.. PASS
 
 Check basic addition of reader (add_reader):
   Find OLD keyword with base readers.. PASS
   Success by the new reader.. PASS
 
-✔ Success: 54 tests run.
+✔ Success: 55 tests run.
 EOO
