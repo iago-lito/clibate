@@ -1,7 +1,7 @@
 from .context import ParseContext, ContextLexer, EOI
 from .exceptions import ParseError, NoSectionMatch
 from .parse_editor import ParseEditor
-from .reader import LinesAutomaton
+from .reader import SplitAutomaton
 
 from pathlib import Path
 
@@ -26,9 +26,9 @@ class Parser(object):
         else:
             self._collect.append(parsed_object)
 
-    def find_matching_reader(self, lexer) -> "MatchResult" or None:
+    def find_matching_reader(self, lexer) -> [object]:
         """Consume necessary input
-        for (exactly) one reader to match at current position.
+        for one or zero reader to match at current position.
         """
 
         # Error out if several readers match: ambiguity.
@@ -37,8 +37,8 @@ class Parser(object):
             # Spawn a safe version of the lexer for the readers to toy with it..
             lexcopy = lexer.copy()
             try:
-                if m := reader.section_match(lexcopy):
-                    matches.append((m, reader, lexcopy))
+                m = reader.section_match(lexcopy)
+                matches.append((m, reader, lexcopy))
             except NoSectionMatch:
                 pass
         if len(matches) > 1:
@@ -53,69 +53,74 @@ class Parser(object):
 
         # It may be that none matched.
         if len(matches) == 0:
-            return None
+            return []
 
         # Commit to the lexer winning this match.
         [(match, reader, winlexer)] = matches
         lexer.become(winlexer)
 
-        return match
+        return [match]
 
     def parse(self, lexer):
         """Iteratively hand the lexer to readers so they consume it bit by bit."""
 
         # One iteration, one collected object.
         self._collect.clear()
-        match = None  # Currently being processed.
+        match = []  # Currently being processed: [], [None] or [object]
         while True:
 
-            if not match:
+            if match == []:
                 match = self.find_matching_reader(lexer)
 
-            if not match:
-
-                if lexer.find_empty_line():
-                    # It's okay that we have not matched on an empty line
-                    # or a pure comment. Consume and move on.
-                    if lexer.consumed:
-                        break
-                    matching_started = False
-                    continue
+            if match == []:
                 raise ParseError("No readers matching input.", lexer.context)
 
-            if not isinstance(match, LinesAutomaton):
-                # The reader has already produced a valid object.
-                self.collect(match)
+            if match == [None]:
+                # This is a sign sent from an ignorer:
+                # parsing is correct but there is nothing interesting here to parse.
                 if lexer.consumed:
                     break
-                match = None
+                match = []
+                continue
+
+            if not isinstance(match[0], SplitAutomaton):
+                # The reader has already produced a valid object.
+                self.collect(match[0])
+                if lexer.consumed:
+                    break
+                match = []
                 continue
 
             # Otherwise, it has returned an automaton
-            # that we need to feed with lines until another reader matches.
-            automaton = match
+            # that we need to feed with input bits until another reader matches.
+            automaton = match[0]
             while True:
                 if lexer.consumed:
-                    self.collect(automaton.terminate())
-                    match = None
+                    if (m := automaton.terminate()) is not None:  # Otherwise ignored.
+                        self.collect(m)
+                    match = []
                     break
                 match = self.find_matching_reader(lexer)
-                if not match:
-                    # Extract only one line to feed the automaton with.
-                    # Hand a lexer whose input is only the line.
+                if match == []:
+                    # Extract only one bit to feed the automaton with.
+                    # Hand a lexer whose input is only the given bit.
                     lexcopy = lexer.copy()
-                    _, line = lexer.read_until_either(["\n", EOI])
-                    lexcopy._lexer.input = line  # Drop anything after the line for it.
+                    bit = automaton.split(lexer)
+                    lexcopy._lexer.input = bit  # Drop anything after the bit for it.
                     automaton.feed(lexcopy)
                     continue
+                if match == [None]:
+                    # Ignore what has just been consumed.
+                    continue
                 # In case of match, the automaton should be done.
-                self.collect(automaton.terminate())
+                if (m := automaton.terminate()) is not None:
+                    self.collect(m)
                 break
-            if not match and lexer.consumed:
+            if match == [] and lexer.consumed:
                 break
 
         # All input has been parsed.
-        return list(self._collect) # Return a copy so it does not mutate here.
+        return list(self._collect)  # Return a copy so it does not mutate here.
 
     def parse_file(self, filename, path=None, _includer_context=None) -> [object]:
         """Construct a parser to interpret the given file,

@@ -28,6 +28,7 @@ default_readers.types_accesses = tw.dedent(
     exit_code.ExitCode
     expect.Expect [(True,), (False,)]
     file.File
+    ignorer.Ignored
     include.Include
     output.Output [('stdout',), ('stderr',)]
     readers.Readers

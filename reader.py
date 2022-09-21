@@ -1,10 +1,15 @@
-from lext import Reader as LextReader, LinesAutomaton
-from exceptions import NoSectionMatch, ParseError
+from exceptions import NoSectionMatch, ParseError, SourceError
+from lext import Lexer, Reader as LextReader, SplitAutomaton, EOI
 
 import re
 
+
 class Reader(LextReader):
-    """Specialize reader for clibate purpose."""
+    """Specialize reader for clibate purpose.
+    Although in principle every subtype may rewrite everything
+    and parse the spec file the way it wants,
+    there are facilities here to read clibate sections with a typical-look.
+    """
 
     def section_name(self):
         """Infer section name, assuming the reader's name is <SectionName>Reader."""
@@ -17,7 +22,7 @@ class Reader(LextReader):
         """
         self.lexer = lex
 
-    def check_keyword(self):
+    def check_keyword(self) -> None:
         """Check that the reader's `self.keyword` is starting the match,
         Otherwise warn the calling parser with the correct exception.
         Sets `self.keyword_context` for future reference, as part of the API.
@@ -74,3 +79,11 @@ class Reader(LextReader):
             "Missing colon ':' (soft-matching) or double colon '::' (hard-matching) "
             f"to introduce {self.section_name()} section."
         )
+
+
+class LinesAutomaton(SplitAutomaton):
+    """Soft clibate readers split their input line by line."""
+
+    def split(self, lexer: Lexer) -> str:
+        _, line = lexer.read_until_either(["\n", EOI])
+        return line

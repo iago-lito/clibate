@@ -1,4 +1,4 @@
-"""Reusable, common lexing logic, to be typically used by readers parsing the spec file.
+"""Reusable, common lexing logic, to be typically used by readers.
 """
 
 from .exceptions import LexError
@@ -161,7 +161,7 @@ class Lexer(object):
             self.n_consumed += len(self.input) - len(res)
             self.input = res
         else:
-            self.match(re.compile(r'[^\S\r\n]*'), consume=True)
+            self.match(re.compile(r"[^\S\r\n]*"), consume=True)
         return self
 
     def match(self, token, consume=True) -> bool:

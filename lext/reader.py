@@ -1,8 +1,7 @@
 from .context import ContextLexer
-from .exceptions import ParseError, NoSectionMatch
+from .lexer import Lexer
 
 from types import MethodType
-import re
 
 
 class Reader(object):
@@ -12,15 +11,16 @@ class Reader(object):
     because their version of the lexer is eventually offered to subsequent readers
     if they match.
 
-    "Hard" readers ar able to directly find the end of their match,
+    "Hard" readers are able to directly find the end of their match,
     and need not be called back.
 
     "Soft" readers recognize that their section started,
     but the end of their match is actually the beginning of another reader's match,
     so they can't exactly tell.
-    Instead of returning a fully parsed object like Actor or Checker,
-    they return a LinesAutomaton to the main parser.
-    The parser will feed this automaton with subsequent input, *line by line*,
+    Instead of returning a fully parsed object,
+    they return a SplitAutomaton to the main parser.
+    The parser will feed this automaton with subsequent input,
+    *bit by bit* according to the automaton's splitting procedure,
     until another reader matches and takes over.
     The automaton then `.terminate()`s to produce the actual, fully parsed object.
 
@@ -28,12 +28,9 @@ class Reader(object):
 
     As the parent class of all readers,
     Reader offers a Lexer-wrapping API for basic parsing of the input given in match.
-    So, although in principle every subtype may rewrite everything
-    and parse the spec file the way it wants,
-    there are facilities to read clibate sections with a typical-look.
 
-    Most basic lexing utilities are implemented in the base lexer,
-    here are more high-level pre-defined lexing operations to match clib look.
+    Hard readers can also be used as "ignorers" to handle input that is okay to ignore,
+    provided they return None as a parsed object.
     """
 
     def section_match(self, lexer) -> object or None:
@@ -53,18 +50,22 @@ class Reader(object):
         )
 
 
-class LinesAutomaton(object):
-    """Lines automaton are returned by soft matching readers
-    to process successive lines into a progressively constructed object,
+class SplitAutomaton(object):
+    """Split automaton are returned by soft matching readers
+    to process successive bits into a progressively constructed object,
     and until another reader starts matching.
     """
+
+    def split(self, lexer):
+        """Consume and return one "bit" input according to this automaton need."""
+        raise NotImplementedError(f"Missing method 'split' for {type(self).__name__}")
 
     def feed(self, lexer):
         """Process one line and keep constructing the object from it.
         Raise LineFeedError in case processing failed.
         The lexer received will EOI at the end of the line.
         """
-        raise NotImplementedError("Missing method 'feed' for {type(self).__name__}.")
+        raise NotImplementedError(f"Missing method 'feed' for {type(self).__name__}.")
 
     def terminate(self):
         """That's the signal, send to us by the main parser,
@@ -72,5 +73,5 @@ class LinesAutomaton(object):
         Finish constructing the object and return it.
         """
         raise NotImplementedError(
-            "Missing method 'terminate' for {type(self).__name__}."
+            f"Missing method 'terminate' for {type(self).__name__}."
         )

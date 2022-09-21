@@ -26,7 +26,6 @@ and the repeated introduction of permanent or temporary changes to it.
 This happens within a dedicated `.clib` file specifying the tests to be run.
 
 Here is what a clibate specification file looks like:
-
 ```clib
 # Setup a blackboxed command you'd like to test (here a dummy example with awk).
 command: cat input_file.csv | awk -f main.awk
