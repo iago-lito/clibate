@@ -1,7 +1,7 @@
 """Reusable, common lexing logic, to be typically used by readers parsing the spec file.
 """
 
-from exceptions import LexError
+from .exceptions import LexError
 
 import ast
 import re
@@ -457,14 +457,14 @@ class Lexer(object):
         (' ', 24)
         >>> l.read_until(':', strip=False, expect_data='fruit')
         Traceback (most recent call last):
-        exceptions.LexError: Missing expected data: 'fruit'.
+        lext.exceptions.LexError: Missing expected data: 'fruit'.
         >>> l.n_consumed
         24
         >>> l.read_until(':'), l.n_consumed
         ('', 25)
         >>> l.read_until(':', strip=True, expect_data='fruit'), l.n_consumed
         Traceback (most recent call last):
-        exceptions.LexError: Missing expected data: 'fruit'.
+        lext.exceptions.LexError: Missing expected data: 'fruit'.
         >>> l.n_consumed
         25
 
@@ -697,7 +697,7 @@ class Lexer(object):
         >>> l = Lexer("   :: ") # No fruit.
         >>> l.read_string_or_raw_until(rc(r':+'), expect_data='fruit')
         Traceback (most recent call last):
-        exceptions.LexError: Missing expected data: 'fruit'.
+        lext.exceptions.LexError: Missing expected data: 'fruit'.
         >>> l = Lexer(" '  ' :: ") # Explicit blank fruit.
         >>> l.read_string_or_raw_until('::', expect_data='fruit'), l.n_consumed
         ('  ', 8)
@@ -709,29 +709,29 @@ class Lexer(object):
         >>> l = Lexer("  'string' unwanted :: next")
         >>> l.read_string_or_raw_until("::")
         Traceback (most recent call last):
-        exceptions.LexError: Unexpected data found between string and '::': 'unwanted'.
+        lext.exceptions.LexError: Unexpected data found between string and '::': 'unwanted'.
 
         >>> l = Lexer(" unwanted 'string'")
         >>> l.read_string_or_raw_until(EOI)
         Traceback (most recent call last):
-        exceptions.LexError: Unexpected data found before string: 'unwanted'.
+        lext.exceptions.LexError: Unexpected data found before string: 'unwanted'.
 
         This triggers anytime the remaining raw data would partially parse as a string.
         >>> l = Lexer(" unwanted '''string \'''\"")
         >>> l.read_string_or_raw_until(EOI)
         Traceback (most recent call last):
-        exceptions.LexError: Unexpected data found before string: 'unwanted'.
+        lext.exceptions.LexError: Unexpected data found before string: 'unwanted'.
 
         >>> l = Lexer("  'string''again' :: next")
         >>> l.read_string_or_raw_until(rc(r':+'))
         Traceback (most recent call last):
-        exceptions.LexError: Unexpected data found between string and '::': "'again'".
+        lext.exceptions.LexError: Unexpected data found between string and '::': "'again'".
 
         >>> l = Lexer("  'string' 'more")
         >>> l.read_string_or_raw_until(EOI) # doctest: +NORMALIZE_WHITESPACE
         Traceback (most recent call last):
-        exceptions.LexError: Unexpected data found
-                               between string and end of input: "'more".
+        lext.exceptions.LexError: Unexpected data found
+                                  between string and end of input: "'more".
 
         Overflowing stop marks with unclosed strings.
         >>> l = Lexer(" 'unclosed string :: ne'xt")
@@ -883,7 +883,7 @@ class Lexer(object):
         >>> l = Lexer(" no opening) ")
         >>> l.read_tuple()
         Traceback (most recent call last):
-        exceptions.LexError: Missing opening parenthesis.
+        lext.exceptions.LexError: Missing opening parenthesis.
         >>> l.n_consumed
         0
         >>> l.read_tuple(optional=True) # No error in case we were expecting maybe-none.
@@ -892,47 +892,47 @@ class Lexer(object):
         >>> l = Lexer(" (no closing ")
         >>> l.read_tuple()
         Traceback (most recent call last):
-        exceptions.LexError: Missing comma in tuple or unmatched parenthesis.
+        lext.exceptions.LexError: Missing comma in tuple or unmatched parenthesis.
         >>> l.n_consumed
         0
         >>> l = Lexer(" (no, closing \n too late) ")
         >>> l.read_tuple()
         Traceback (most recent call last):
-        exceptions.LexError: Missing comma in tuple or unmatched parenthesis.
+        lext.exceptions.LexError: Missing comma in tuple or unmatched parenthesis.
         >>> l.n_consumed
         0
         >>> l = Lexer(" (not, 'all' well-quoted) ")
         >>> l.read_tuple()
         Traceback (most recent call last):
-        exceptions.LexError: ...
+        lext.exceptions.LexError: ...
         >>> l.n_consumed
         0
         >>> l = Lexer(" (wrong, number) ")
         >>> l.read_tuple(3) # doctest: +NORMALIZE_WHITESPACE
         Traceback (most recent call last):
-        exceptions.LexError: Expected 3 values in tuple,
-                               found 2 instead: ('wrong', 'number').
+        lext.exceptions.LexError: Expected 3 values in tuple,
+                                  found 2 instead: ('wrong', 'number').
         >>> l.n_consumed
         0
         >>> l = Lexer(" (wrong, number) ")
         >>> l.read_tuple([3, 4, 5]) # doctest: +NORMALIZE_WHITESPACE
         Traceback (most recent call last):
-        exceptions.LexError: Expected either 3, 4 or 5 values in tuple,
-                               found 2 instead: ('wrong', 'number').
+        lext.exceptions.LexError: Expected either 3, 4 or 5 values in tuple,
+                                  found 2 instead: ('wrong', 'number').
         >>> l.n_consumed
         0
         >>> l = Lexer(" (wrong, number) ")
         >>> l.read_tuple([3, 4, 5]) # doctest: +NORMALIZE_WHITESPACE
         Traceback (most recent call last):
-        exceptions.LexError: Expected either 3, 4 or 5 values in tuple,
-                               found 2 instead: ('wrong', 'number').
+        lext.exceptions.LexError: Expected either 3, 4 or 5 values in tuple,
+                                  found 2 instead: ('wrong', 'number').
         >>> l.n_consumed
         0
         >>> l = Lexer(" (wrong, number) ")
         >>> l.read_tuple([3, 1]) # doctest: +NORMALIZE_WHITESPACE
         Traceback (most recent call last):
-        exceptions.LexError: Expected either 3 or 1 value in tuple,
-                               found 2 instead: ('wrong', 'number').
+        lext.exceptions.LexError: Expected either 3 or 1 value in tuple,
+                                  found 2 instead: ('wrong', 'number').
         >>> l.n_consumed
         0
         """
@@ -989,7 +989,7 @@ class Lexer(object):
         ('   ', 7)
         >>> (l:=Lexer("   # c ")).read_line(expect_data='anything')
         Traceback (most recent call last):
-        exceptions.LexError: Missing expected data: 'anything'.
+        lext.exceptions.LexError: Missing expected data: 'anything'.
         >>> l.n_consumed
         0
         >>> (l:=Lexer(" without a comment \n next")).read_line(), l.n_consumed
@@ -1000,12 +1000,12 @@ class Lexer(object):
         ('', 1)
         >>> (l:=Lexer("  \n with a blank line")).read_line(expect_data='anything')
         Traceback (most recent call last):
-        exceptions.LexError: Missing expected data: 'anything'.
+        lext.exceptions.LexError: Missing expected data: 'anything'.
         >>> l.n_consumed
         0
         >>> (l:=Lexer("\n with an empty line")).read_line(expect_data='anything')
         Traceback (most recent call last):
-        exceptions.LexError: Missing expected data: 'anything'.
+        lext.exceptions.LexError: Missing expected data: 'anything'.
         >>> l.n_consumed
         0
         """
@@ -1039,7 +1039,7 @@ class Lexer(object):
         'a'
         >>> Lexer("   # c ").read_string_or_raw_line(expect_data='anything')
         Traceback (most recent call last):
-        exceptions.LexError: Missing expected data: 'anything'.
+        lext.exceptions.LexError: Missing expected data: 'anything'.
         >>> Lexer(" ''  # c ").read_string_or_raw_line(expect_data='anything')
         ''
         """
@@ -1098,7 +1098,7 @@ class Lexer(object):
         (None, 0)
         >>> (l:=Lexer(" rest # unfinished line ")).check_empty_line()
         Traceback (most recent call last):
-        exceptions.LexError: Unexpected data after end of line: 'rest'.
+        lext.exceptions.LexError: Unexpected data after end of line: 'rest'.
         >>> l.n_consumed
         0
         """
@@ -1138,16 +1138,16 @@ class Lexer(object):
         >>> l = Lexer(" EOR # opening marker\n raw\n read\n # NO closing marker")
         >>> l.read_heredoc_like()
         Traceback (most recent call last):
-        exceptions.LexError: Missing closing file marker: 'EOR'.
+        lext.exceptions.LexError: Missing closing file marker: 'EOR'.
 
         >>> l = Lexer(" EOR extra data\n raw\n read\nEOR # closing marker")
         >>> l.read_heredoc_like()
         Traceback (most recent call last):
-        exceptions.LexError: Unexpected data after end of line: 'extra data'.
+        lext.exceptions.LexError: Unexpected data after end of line: 'extra data'.
 
         >>> Lexer(" ").read_heredoc_like()
         Traceback (most recent call last):
-        exceptions.LexError: Unexpected end of file when reading end-of-file marker.
+        lext.exceptions.LexError: Unexpected end of file when reading end-of-file marker.
 
         >>> l = Lexer(" marker\n already\n given EOR ")
         >>> l.read_heredoc_like(EOR='EOR'), l.n_consumed # dedentation still occurs.

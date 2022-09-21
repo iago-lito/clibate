@@ -9,8 +9,8 @@ to enable/remove support for parsing subsequent sections in specification files.
 
 """
 
-from parse_editor import ParseEditor
 from exceptions import ParseError, colors as c
+from lext import ParseEditor
 from reader import Reader, LinesAutomaton
 
 from dataclasses import dataclass

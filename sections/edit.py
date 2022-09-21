@@ -12,7 +12,7 @@ Thorough documentation in `edit.md` file. Here is just a simple example:
 
 from actor import Actor
 from exceptions import ParseError, TestRunError, SourceError, NoSectionMatch
-from lexer import Lexer, EOI
+from lext import EOI
 from reader import Reader, LinesAutomaton
 
 import re
@@ -194,7 +194,7 @@ class LineProcesser(object):
 class RegexInstruction(LineProcesser):
     r"""Instructions marked with a '/' mark: user wants explicit manual regexes.
 
-    >>> from context import MOCK_CONTEXT
+    >>> from lext.context import MOCK_CONTEXT
     >>> d = RegexInstruction(
     ...         operation="below",
     ...         match_pattern="PA",
@@ -288,7 +288,7 @@ class RegexInstruction(LineProcesser):
 class AutomaticInstruction(LineProcesser):
     """Instruction not marked with a '/': user relies on clib edit section's language.
 
-    >>> from context import MOCK_CONTEXT
+    >>> from lext.context import MOCK_CONTEXT
     >>> d = AutomaticInstruction(
     ...         operation='above',
     ...         match_pattern="IPA",

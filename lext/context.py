@@ -1,6 +1,6 @@
 """Wraps a basic lexer with additional contextual information
 regarding the file currently being run, the position within it in terms of line/column
-and the include chain.
+and a possible include chain.
 This is the actual lexer handed out to readers during parsing.
 All calls to the base lexer are deferred to it,
 but ParseError exceptions are caught to append additional useful information
@@ -8,8 +8,8 @@ before they are raised again, or exit the program with a graceful error message
 instead of a python traceback.
 """
 
-from exceptions import LexError, ParseError, colors as c
-from lexer import Lexer, EOI  # Reexport EOI.
+from .exceptions import LexError, ParseError, colors as c
+from .lexer import Lexer, EOI  # Reexport EOI.
 
 from dataclasses import dataclass
 from pathlib import Path

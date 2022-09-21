@@ -28,7 +28,6 @@ Even with the 'exact' mode, differences are tolerated with actual output:
 from actor import Actor
 from checker import Checker
 from exceptions import ParseError, SourceError, delineate_string
-from lexer import Lexer
 from reader import Reader, LinesAutomaton
 
 import re

@@ -1,8 +1,7 @@
-from context import ParseContext, ContextLexer, EOI
-from exceptions import ParseError, NoSectionMatch
-from parse_editor import ParseEditor
-from reader import LinesAutomaton
-from sections import default_readers
+from .context import ParseContext, ContextLexer, EOI
+from .exceptions import ParseError, NoSectionMatch
+from .parse_editor import ParseEditor
+from .reader import LinesAutomaton
 
 from pathlib import Path
 
@@ -14,7 +13,7 @@ class Parser(object):
 
     def __init__(self, readers=None):
         # Get our own list so it cannot mutate from elsewhere.
-        self.readers = list(readers if readers else default_readers())
+        self.readers = readers
         # Instructions collected while parsing.
         self._collect = []
 

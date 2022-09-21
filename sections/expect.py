@@ -61,7 +61,6 @@ from .exit_code import ExitCode
 from .output import EmptyOutput, ExactOutput, OutputSubstring, OutputSubstringAutomaton
 from actor import Actor
 from exceptions import ParseError
-from lexer import Lexer
 from reader import Reader, LinesAutomaton
 
 

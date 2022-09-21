@@ -4,8 +4,10 @@ with input data read from the given folder,
 and within the given sandbox folder.
 """
 
-from exceptions import ParseError, TestRunError, colors as c
-from parser import Parser
+from exceptions import TestRunError
+from lext import Parser, ParseError
+from lext.exceptions import colors as c
+from sections import default_readers
 from test_runner import TestRunner
 
 from pathlib import Path
@@ -24,7 +26,7 @@ def toplevel(spec, input, sandbox) -> (str, int) or None:
 
     try:
         try:
-            parser = Parser()
+            parser = Parser(default_readers())
             instructions = parser.parse_file(spec)
             rn = TestRunner(input, sandbox, parser)
             if not rn.setup_and_run(instructions):
